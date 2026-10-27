@@ -229,50 +229,12 @@ def load_whisper(name, gpu):
 
 # ---------------------------------------------------------------- audio
 def decode_audio(media, start, end):
-    """Le so o trecho [start, end] (segundos do arquivo) como 16 kHz mono float32."""
-    import av
-    import numpy as np
+    """Le so o trecho [start, end] (segundos do arquivo) como 16 kHz mono float32, na trilha mais alta."""
+    import ccaudio
     try:
-        cont = av.open(media)
-    except Exception as e:
-        fail("não consegui abrir o arquivo: %s (%s)" % (media, e))
-    try:
-        stream = next(s for s in cont.streams if s.type == "audio")
-    except StopIteration:
-        cont.close()
-        fail("o arquivo não tem áudio: " + os.path.basename(media))
-    base = float(cont.start_time or 0) / 1e6 if cont.start_time else 0.0
-    if start > 1:
-        try:
-            cont.seek(int((start + base - 1) * 1e6), any_frame=False, backward=True)
-        except Exception:
-            pass
-    res = av.AudioResampler(format="flt", layout="mono", rate=SR)
-    chunks, first_t = [], None
-    try:
-        for frame in cont.decode(stream):
-            if frame.pts is None:
-                continue
-            t = float(frame.pts * frame.time_base) - base
-            if end and t > end:
-                break
-            for f in res.resample(frame) or []:
-                arr = f.to_ndarray().reshape(-1)
-                if first_t is None:
-                    first_t = t
-                chunks.append(arr)
-        for f in res.resample(None) or []:
-            chunks.append(f.to_ndarray().reshape(-1))
-    except Exception as e:
-        log("aviso ao ler o áudio: %s" % e)
-    cont.close()
-    if not chunks:
-        return np.zeros(0, dtype="float32")
-    audio = np.concatenate(chunks).astype("float32")
-    first_t = first_t or 0.0
-    a = max(0, int(round((start - first_t) * SR)))
-    b = len(audio) if not end else max(a, int(round((end - first_t) * SR)))
-    return audio[a:b]
+        return ccaudio.decode(media, start, end, SR, log)
+    except RuntimeError as e:
+        fail(str(e))
 
 
 def energy_envelope(audio):
@@ -292,7 +254,8 @@ def energy_envelope(audio):
 def cache_file(media, model, language):
     try:
         st = os.stat(media)
-        sig = "%s|%d|%d|%s|%s" % (os.path.abspath(media).lower(), st.st_size, int(st.st_mtime), model, language)
+        # "a2": desde a v1.0.2 a trilha de audio escolhida e a mais alta (as transcricoes antigas sao refeitas)
+        sig = "%s|%d|%d|%s|%s|a2" % (os.path.abspath(media).lower(), st.st_size, int(st.st_mtime), model, language)
     except OSError:
         sig = "%s|%s|%s" % (media, model, language)
     return os.path.join(cache_dir(), hashlib.sha1(sig.encode("utf-8")).hexdigest() + ".json")

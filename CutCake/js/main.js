@@ -602,7 +602,7 @@
         it.progress = 1;
         if (!r.ok) { it.state = "fail"; it.msg = r.msg || "Não achei este áudio na referência."; return; }
         it.pct = r.pct;
-        var info = r.agree + " de " + r.total + " pontos" + (r.method === "fala" ? " · pela fala" : "");
+        var info = r.agree + " de " + r.total + " pontos" + (r.method === "fala" ? " · pela fala" : "") + (r.track ? " · " + r.track : "");
         if (r.pct < 50) { it.state = "skip"; it.st = "Não movi"; it.msg = "Não tenho certeza (" + info + "). Confira à mão."; return; }
         it.state = "ok"; it.st = fmtDelta(r.delta);
         it.msg = "Andou " + fmtDelta(r.delta) + " · " + info +
@@ -1245,6 +1245,7 @@
   var taskbar = (function () {
     var proc = null, last = -1;
     var script = [
+      "$ProgressPreference = 'SilentlyContinue'",
       "Add-Type -TypeDefinition @'",
       "using System; using System.Runtime.InteropServices;",
       "namespace CCTB {",
@@ -1286,7 +1287,7 @@
         proc = cp.spawn("powershell", ["-NoProfile", "-NonInteractive", "-Sta", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { windowsHide: true });
         proc.on("error", function () { proc = null; });
         proc.on("close", function () { proc = null; });
-        proc.stderr.on("data", function (b) { addLog("barra do ícone: " + b); });
+        proc.stderr.on("data", function (b) { if (!/CLIXML|<Objs /.test(String(b))) addLog("barra do ícone: " + b); });
         send("s 2"); send("p 0");
       } catch (e) { proc = null; }
     }
@@ -1588,6 +1589,7 @@
   // ------------------------------------------------------------ notificacao do windows
   var AUMID = "LChedick.CutCake";
   function psRun(script) {
+    script = "$ProgressPreference = 'SilentlyContinue'\n" + script;
     var encoded = req("buffer").Buffer.from(script, "utf16le").toString("base64");
     return exec("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded]);
   }

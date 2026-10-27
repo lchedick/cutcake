@@ -24,66 +24,21 @@ FINE_WIN = 0.5           # ajuste fino: +-0,5 s em volta do ponto aproximado
 
 
 # ---------------------------------------------------------------- audio
-def _open(media):
-    import av
-    try:
-        cont = av.open(media)
-    except Exception as e:
-        raise RuntimeError("não consegui abrir o arquivo: %s (%s)" % (os.path.basename(media), e))
-    try:
-        stream = next(s for s in cont.streams if s.type == "audio")
-    except StopIteration:
-        cont.close()
-        raise RuntimeError("o arquivo não tem áudio: " + os.path.basename(media))
-    return cont, stream
+import ccaudio
+
+LOG = [print]
 
 
 def media_duration(media):
-    cont, stream = _open(media)
-    try:
-        if stream.duration and stream.time_base:
-            return float(stream.duration * stream.time_base)
-        if cont.duration:
-            return float(cont.duration) / 1e6
-    finally:
-        cont.close()
-    return 0.0
+    cont, st, dur = ccaudio.stream_for_envelope(media, LOG[0])
+    cont.close()
+    return dur
 
 
 def decode(media, start, end):
-    """Trecho [start, end] (segundos do arquivo) em 8 kHz mono."""
-    import av
-    cont, stream = _open(media)
-    base = float(cont.start_time) / 1e6 if cont.start_time else 0.0
-    if start > 1:
-        try:
-            cont.seek(int((start + base - 1) * 1e6), any_frame=False, backward=True)
-        except Exception:
-            pass
-    res = av.AudioResampler(format="flt", layout="mono", rate=SR)
-    chunks, first_t = [], None
-    try:
-        for frame in cont.decode(stream):
-            if frame.pts is None:
-                continue
-            t = float(frame.pts * frame.time_base) - base
-            if end is not None and t > end + 0.5:
-                break
-            for f in res.resample(frame) or []:
-                if first_t is None:
-                    first_t = t
-                chunks.append(f.to_ndarray().reshape(-1))
-    finally:
-        cont.close()
-    if not chunks:
-        return np.zeros(0, dtype=np.float32)
-    a = np.concatenate(chunks).astype(np.float32)
-    i0 = max(0, int(round((start - (first_t or 0.0)) * SR)))
-    i1 = len(a) if end is None else max(i0, int(round((end - (first_t or 0.0)) * SR)))
-    out = a[i0:i1]
-    if start < (first_t or 0.0):   # comeco antes do primeiro quadro de audio: completa com silencio
-        out = np.concatenate([np.zeros(int(round(((first_t or 0.0) - start) * SR)), np.float32), out])
-    return out
+    """Trecho [start, end] (segundos do arquivo) em 8 kHz mono, na trilha de audio mais alta."""
+    x = ccaudio.decode(media, start, end, SR, LOG[0])
+    return x if x is not None else np.zeros(0, np.float32)
 
 
 def _feature(env):
@@ -115,7 +70,7 @@ def ref_envelope(media, cache_dir, on_prog=None):
     """Envelope do arquivo inteiro da referencia, lido em partes (pouca memoria) e guardado em cache."""
     try:
         st = os.stat(media)
-        sig = "%s|%d|%d|env8k" % (os.path.abspath(media).lower(), st.st_size, int(st.st_mtime))
+        sig = "%s|%d|%d|env8k|t%d" % (os.path.abspath(media).lower(), st.st_size, int(st.st_mtime), ccaudio.pick_stream(media, LOG[0]))
     except OSError:
         sig = media + "|env8k"
     cpath = os.path.join(cache_dir, "env_" + hashlib.sha1(sig.encode("utf-8")).hexdigest() + ".npy")
@@ -125,8 +80,8 @@ def ref_envelope(media, cache_dir, on_prog=None):
         except Exception:
             pass
     import av
-    dur = max(1.0, media_duration(media))
-    cont, stream = _open(media)
+    cont, stream, dur = ccaudio.stream_for_envelope(media, LOG[0])
+    dur = max(1.0, dur)
     res = av.AudioResampler(format="flt", layout="mono", rate=SR)
     out, buf, prev, n = [], np.zeros(0, np.float32), 0.0, 0
     try:
@@ -309,7 +264,10 @@ def sync_item(ref, item, ref_env_f, ref_dur, opts, speech=None, log=print):
                 p["ok"] = False
         good = [p for p in pts if p["ok"]]
     if not good:
-        return {"ok": False, "msg": "Não achei este áudio na referência.", "method": method,
+        mudo = all(p.get("why") == "silêncio" for p in pts)
+        msg = ("O áudio deste clipe parece mudo. " + (ccaudio.info(item["media"]) or "")).strip() if mudo \
+            else "Não achei este áudio na referência."
+        return {"ok": False, "msg": msg, "method": method,
                 "points": [{"pos": round(p["pos"], 2), "ok": False} for p in pts]}
 
     # ajuste fino em cada ponto
@@ -364,6 +322,7 @@ def sync_item(ref, item, ref_env_f, ref_dur, opts, speech=None, log=print):
 
 
 def run(task, cache_dir, on_prog, log, speech_factory=None):
+    LOG[0] = log
     ref = task["ref"]
     items = task["items"]
     opts = task.get("sync") or {}
@@ -387,6 +346,7 @@ def run(task, cache_dir, on_prog, log, speech_factory=None):
             r = {"ok": False, "msg": str(e)}
         r["key"] = it.get("key")
         r["name"] = it.get("name")
+        r["track"] = ccaudio.short(it["media"])
         out.append(r)
         on_prog(0.4 + 0.6 * (i + 1) / max(1, len(items)))
     return {"results": out}

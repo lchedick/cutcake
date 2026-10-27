@@ -93,9 +93,10 @@
   .actions .btn:hover:not(:disabled) { transform:scale(1.03); z-index:2; }
   .actions .btn:active:not(:disabled) { transform:scale(1.01); }
 
-  #status { min-height:16px; margin-top:8px; font-size:11.5px; }
+  #status { font-size:11.5px; margin:0 0 8px; }
+  #status:empty { display:none; }
   #status.err { color:var(--err); } #status.ok { color:var(--ok); }
-  #status.big { font-size:17px; line-height:1.3; margin:10px 0 4px; text-align:center; }
+  #status.big { font-size:17px; line-height:1.3; margin:0 0 10px; text-align:center; }
   #status b { font-weight:700; }
   #status .notes-btn { margin:8px auto 0; }
 
@@ -117,10 +118,10 @@
   @keyframes pop { 0% { transform:scale(.6); } 60% { transform:scale(1.18); } 100% { transform:scale(1); } }
   @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-5px) rotate(-4deg); }
                      40% { transform:translateX(5px) rotate(4deg); } 60% { transform:translateX(-3px); } 80% { transform:translateX(3px); } }
-  #restart { display:none; margin-top:8px; }
+  #restart { display:none; margin-bottom:4px; }
   #restart.show { display:flex; }
   .restart-hint { display:none; text-align:center; color:var(--muted); font-size:11px; margin-top:4px; }
-  #restart.show + .restart-hint { display:block; }
+  #restart.show + .restart-hint { display:block; margin-bottom:10px; }
 
   /* cartoes e campos */
   .card { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:10px; margin:10px 0; }
@@ -291,6 +292,10 @@
     <span id="updateText">Nova versão disponível</span>
     <button id="updateBtn">Atualizar</button>
   </div>
+
+  <div id="status"></div>
+  <button class="btn green full" id="restart"><i class="ico sm" data-i="Update"></i>Reiniciar o Premiere agora</button>
+  <div class="restart-hint">O Premiere vai fechar (pedindo para salvar, se precisar) e abrir de novo com o mesmo projeto.</div>
 
   <nav class="tabs" id="tabs">
     <button data-tab="sync"><i class="ico sm" data-i="Sync"></i><span>Sincronizar</span></button>
@@ -485,9 +490,6 @@
     <div class="hint pad">Usa os marcadores com duração na cor de corte da sequência aberta, na ordem da timeline.</div>
   </section>
 
-  <div id="status"></div>
-  <button class="btn green full" id="restart"><i class="ico sm" data-i="Update"></i>Reiniciar o Premiere agora</button>
-  <div class="restart-hint">O Premiere vai fechar (pedindo para salvar, se precisar) e abrir de novo com o mesmo projeto.</div>
 
   <div class="card" id="queueCard">
     <div class="qhead">
@@ -504,7 +506,7 @@
     </div>
   </div>
 </main>
-<footer id="footer">CutCake | v1.0.1 | Desenvolvido por Lucas Chedick</footer>
+<footer id="footer">CutCake | v1.0.2 | Desenvolvido por Lucas Chedick</footer>
 
 <div class="modal" id="config">
   <div class="sheet" role="dialog" aria-label="Configurações">
