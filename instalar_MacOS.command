@@ -41,32 +41,42 @@ echo " [ok] Premiere configurado para carregar o painel"
 # 3) transcricao (Whisper): so ela precisa do Python
 # ------------------------------------------------------------------
 find_python() {
+  # a transcricao (onnxruntime) so funciona do Python 3.10 ao 3.13; prefere o 3.12
   PY=""
-  for c in /Library/Frameworks/Python.framework/Versions/3.*/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
-    if [ -x "$c" ] && "$c" -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)" 2>/dev/null; then PY="$c"; fi
+  for v in 3.12 3.11 3.13 3.10; do
+    for c in "/Library/Frameworks/Python.framework/Versions/$v/bin/python3" "/opt/homebrew/bin/python$v" "/usr/local/bin/python$v"; do
+      if [ -x "$c" ] && "$c" -c "import sys" 2>/dev/null; then PY="$c"; return 0; fi
+    done
   done
-  [ -n "$PY" ] && return 0
+  ok_ver() { "$1" -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)" 2>/dev/null; }
+  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    if [ -x "$c" ] && ok_ver "$c"; then PY="$c"; return 0; fi
+  done
   # /usr/bin/python3 so existe de verdade se as Ferramentas de Linha de Comando estiverem instaladas
-  if xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)" 2>/dev/null; then PY="/usr/bin/python3"; fi
+  if xcode-select -p >/dev/null 2>&1 && ok_ver /usr/bin/python3; then PY="/usr/bin/python3"; fi
   [ -n "$PY" ]
 }
 find_python && printf '%s\n' "$PY" > "$DEST/python_path.txt"
 
 echo ""
-echo " A transcricao (Whisper) e usada pelo Cacador de trechos e para criar"
-echo " as legendas. Ela roda no seu computador, sem internet, mas o download"
-echo " e grande (cerca de 1 GB). Zoom, Render e Animar funcionam sem ela."
+echo " O CutCake usa o Python para Sincronizar, Cacar trechos e criar legendas."
 echo ""
-read -r -p " Instalar a transcricao agora? (S/N): " resp
+echo "   1 = Completo: Python + transcricao (Whisper), sem internet. Cerca de 1 GB."
+echo "   2 = Leve: so o Python e o basico do Sincronizar (cerca de 60 MB)."
+echo "   3 = Agora nao. Zoom, Render e Animar funcionam sem o Python."
+echo ""
+read -r -p " Escolha 1, 2 ou 3: " resp
 case "$resp" in
-  [sS]*) ;;
-  *) echo ""; echo " Tudo bem. Da para instalar depois em Configuracoes > Transcricao."
+  1) MODO=completo ;;
+  2) MODO=leve ;;
+  *) echo ""; echo " Tudo bem. Para instalar depois, rode este instalador de novo."
      echo ""; echo " Pronto! Abra o Premiere e va em: Window > Extensions > CutCake - Cortes, legendas e zoom"; fim 0 ;;
 esac
 
 if ! find_python; then
   echo ""
-  echo " O Python nao esta instalado neste Mac. Ele e necessario para a transcricao."
+  echo " Nao encontrei um Python compativel (3.10 a 3.13) neste Mac."
+  echo " Vou instalar o Python 3.12 (o que ja existir continua funcionando)."
   PKG="/tmp/python-3.12.10-macos11.pkg"
   echo " Baixando o Python..."
   if ! curl -fL --progress-bar -o "$PKG" "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg"; then
@@ -85,8 +95,13 @@ fi
 echo " [ok] Python encontrado: $PY"
 printf '%s\n' "$PY" > "$DEST/python_path.txt"
 
-echo " Instalando as bibliotecas da transcricao..."
-REQ="$DEST/engine/requirements.txt"
+if [ "$MODO" = "leve" ]; then
+  echo " Instalando o basico do Sincronizar..."
+  REQ="$DEST/engine/requirements-base.txt"
+else
+  echo " Instalando as bibliotecas da transcricao..."
+  REQ="$DEST/engine/requirements.txt"
+fi
 if ! "$PY" -m pip install --upgrade --disable-pip-version-check -r "$REQ" 2>/dev/null; then
   if ! "$PY" -m pip install --user --upgrade --disable-pip-version-check -r "$REQ"; then
     if ! "$PY" -m pip install --user --break-system-packages --upgrade --disable-pip-version-check -r "$REQ"; then
@@ -97,8 +112,10 @@ if ! "$PY" -m pip install --upgrade --disable-pip-version-check -r "$REQ" 2>/dev
 fi
 echo " [ok] Bibliotecas instaladas"
 
-echo " Baixando o modelo do Whisper (so desta vez)..."
-"$PY" "$DEST/engine/cutcake.py" download --model auto --console || echo " [aviso] O modelo nao foi baixado. O CutCake baixa sozinho no primeiro uso."
+if [ "$MODO" != "leve" ]; then
+  echo " Baixando o modelo do Whisper (so desta vez)..."
+  "$PY" "$DEST/engine/cutcake.py" download --model auto --console || echo " [aviso] O modelo nao foi baixado. O CutCake baixa sozinho no primeiro uso."
+fi
 
 echo ""
 echo " Pronto! Abra o Premiere e va em:"

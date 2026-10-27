@@ -30,6 +30,9 @@ class Clip {
     this.projectItem = o.media===null? null : { getMediaPath: ()=> o.media||"", isSequence: ()=>false };
   }
   getSpeed(){ return this.speed; } isSpeedReversed(){ return false; }
+  // como no Premiere: move(Time) desloca o clipe; o audio/video ligado (linked) anda junto
+  move(t){ const d = typeof t === "number" ? t : t.seconds; const all = [this].concat(this.linked || []);
+    all.forEach(c => { c.start = new Time(c.start.seconds + d); c.end = new Time(c.end.seconds + d); }); }
   setSelected(b){ this.selected=b; }
 }
 class Marker { constructor(s){ this.start=new Time(s); this._end=new Time(s); this.name=""; this.comments=""; this.color=0; this.guid="g"+Math.random(); }

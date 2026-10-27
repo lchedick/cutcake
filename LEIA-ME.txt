@@ -12,11 +12,13 @@ INSTALAÇÃO - WINDOWS
 2. Dê dois cliques em instalar_Windows.bat.
    (Se o Windows mostrar "O Windows protegeu o computador", clique em
    "Mais informações" > "Executar assim mesmo".)
-3. O instalador pergunta se você quer instalar a transcrição (Whisper).
-   Ela é usada pelo Caçador e para criar as legendas. Responda: "S".
-   Se o Python não estiver instalado, ele instala sozinho (não precisa
-   de senha de administrador). Com placa de vídeo NVIDIA, o download
-   fica com cerca de 3 GB.
+3. O instalador pergunta o que instalar. Responda:
+   "1" = Completo: Python + transcrição (Whisper), para Sincronizar,
+         Caçar e Legendar. Com placa de vídeo NVIDIA, cerca de 3 GB.
+   "2" = Leve: só o Python e o básico do Sincronizar (cerca de 60 MB).
+   "3" = Agora não (Zoom, Render e Animar funcionam sem o Python).
+   Se não tiver um Python compatível (3.10 a 3.13), ele instala o 3.12
+   sozinho, sem mexer no que já existe e sem senha de administrador.
 4. Quando aparecer "Pronto!", abra o Premiere e vá em:
    Window > Extensions > CutCake • Cortes, legendas e zoom
 
@@ -25,15 +27,25 @@ INSTALAÇÃO - MAC (BETA)
 -----------------------
 1. Feche o Premiere.
 2. Clique com o botão direito em instalar_MacOS.command > Abrir > Abrir.
-3. Responda "S" para instalar a transcrição. Se o Python não estiver
-   instalado, o Mac vai pedir a senha do computador.
+3. Responda "1" (completo), "2" (leve) ou "3" (agora não). Se precisar
+   instalar o Python, o Mac vai pedir a senha do computador.
 4. Quando aparecer "Pronto!", abra o Premiere e vá em:
    Window > Extensions > CutCake • Cortes, legendas e zoom
 
 =================================
 
-AS 4 ABAS
+AS 5 ABAS
 ---------
+SINCRONIZAR
+  Coloque as câmeras e o áudio da mesa na timeline (em qualquer lugar),
+  selecione todos e clique em "Sincronizar". A referência (normalmente o
+  áudio da mesa, na trilha de áudio mais baixa) fica parada e os outros
+  clipes andam até o ponto certo, cada vídeo junto com o seu áudio.
+  A fila mostra quanto cada clipe andou, o selo de confiança e se a câmera
+  "escorrega" ao longo da pregação (drift). Se o selo ficar baixo, o clipe
+  não é movido. "Desfazer" volta tudo para onde estava.
+  Cada clipe precisa de espaço livre na trilha para onde vai.
+
 CAÇAR
   Caçar trechos:      transcreve o áudio e marca os melhores trechos como
                       marcadores com duração (cor de corte), com nome

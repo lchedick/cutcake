@@ -33,24 +33,36 @@ for %%v in (9 10 11 12 13 14 15 16) do reg add "HKCU\Software\Adobe\CSXS.%%v" /v
 echo  [ok] Premiere configurado para carregar o painel
 
 rem ------------------------------------------------------------------
-rem 3) transcricao (Whisper): so ela precisa do Python
+rem 3) Python: usado por Sincronizar, Cacar e Legendar
 rem ------------------------------------------------------------------
 call :find_python
 if defined PY (> "%DEST%\python_path.txt" echo %PY%)
 
 echo.
-echo  A transcricao (Whisper) e usada pelo Cacador de trechos e para criar
-echo  as legendas. Ela roda no seu computador, sem internet, mas o download
-echo  e grande (cerca de 3 GB com a placa de video, 1 GB sem).
-echo  Zoom, Render e Animar funcionam sem ela.
+echo  O CutCake usa o Python para Sincronizar, Cacar trechos e criar legendas.
 echo.
-choice /C SN /N /M "  Instalar a transcricao agora? (S/N): "
-if errorlevel 2 goto sem_transcricao
+echo    1 = Completo: Python + transcricao (Whisper), que roda no seu computador,
+echo        sem internet. Cerca de 3 GB com placa de video NVIDIA, 1 GB sem.
+echo    2 = Leve: so o Python e o basico do Sincronizar (cerca de 60 MB).
+echo        Cacar e Legendar ficam para depois.
+echo    3 = Agora nao. Zoom, Render e Animar funcionam sem o Python.
+echo.
+choice /C 123 /N /M "  Escolha 1, 2 ou 3: "
+if errorlevel 3 goto sem_transcricao
+if errorlevel 2 (set "MODO=leve") else (set "MODO=completo")
 
 if defined PY goto tem_python
 echo.
-echo  O Python nao esta instalado neste computador. Ele e necessario para
-echo  a transcricao. Vou instalar agora (nao precisa de senha de administrador).
+py -3 -c "import sys" <nul >nul 2>nul
+if errorlevel 1 goto sem_nenhum
+echo  O Python deste computador e de uma versao que o CutCake ainda nao
+echo  aceita (ele precisa do 3.10 ao 3.13). Vou instalar o Python 3.12 ao lado.
+echo  O Python que ja existe continua funcionando (inclusive para o GTA).
+goto instalar_py
+:sem_nenhum
+echo  O Python nao esta instalado neste computador. Vou instalar agora
+echo  (nao precisa de senha de administrador).
+:instalar_py
 call :install_python
 call :find_python
 if not defined PY goto falha_python
@@ -59,6 +71,14 @@ if not defined PY goto falha_python
 echo  [ok] Python encontrado: %PY%
 > "%DEST%\python_path.txt" echo %PY%
 
+if not "%MODO%"=="leve" goto completo
+echo  Instalando o basico do Sincronizar...
+%PY% -m pip install --upgrade --disable-pip-version-check -r "%DEST%\engine\requirements-base.txt"
+if errorlevel 1 goto erro_pip
+echo  [ok] Basico do Sincronizar instalado
+goto pronto
+
+:completo
 echo  Instalando as bibliotecas da transcricao...
 %PY% -m pip install --upgrade --disable-pip-version-check -r "%DEST%\engine\requirements.txt"
 if errorlevel 1 goto erro_pip
@@ -83,8 +103,7 @@ goto pronto
 
 :sem_transcricao
 echo.
-echo  Tudo bem. Da para instalar depois em Configuracoes ^> Transcricao
-echo  ^> Instalar transcricao (ou rodando este instalador de novo).
+echo  Tudo bem. Para instalar depois, rode este instalador de novo.
 
 :pronto
 echo.
@@ -100,22 +119,35 @@ rem  sub-rotinas
 rem ==================================================================
 
 :find_python
+rem a transcricao (onnxruntime) so funciona do Python 3.10 ao 3.13; prefere o 3.12
 set "PY="
-py -3 -c "import sys" >nul 2>nul
-if not errorlevel 1 ( set "PY=py -3" & goto :eof )
-python -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)" >nul 2>nul
-if not errorlevel 1 ( set "PY=python" & goto :eof )
-rem instalado agora ha pouco: o PATH desta janela ainda nao foi atualizado
-for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do (
-  if exist "%%~d\python.exe" set "PY="%%~d\python.exe""
+for %%v in (3.12 3.11 3.13 3.10) do (
+  if not defined PY (
+    py -%%v -c "import sys" <nul >nul 2>nul && set "PY=py -%%v"
+  )
 )
 if defined PY goto :eof
-if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" set "PY="%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" -3"
+python -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)" >nul 2>nul
+if not errorlevel 1 ( set "PY=python" & goto :eof )
+rem instalado agora ha pouco: o PATH desta janela ainda nao foi atualizado
+for %%v in (312 311 313 310) do (
+  if not defined PY if exist "%LOCALAPPDATA%\Programs\Python\Python%%v\python.exe" set "PY="%LOCALAPPDATA%\Programs\Python\Python%%v\python.exe""
+)
+for %%v in (3.12 3.11 3.13 3.10) do (
+  if not defined PY if exist "%LOCALAPPDATA%\Python\pythoncore-%%v-64\python.exe" set "PY="%LOCALAPPDATA%\Python\pythoncore-%%v-64\python.exe""
+)
 goto :eof
 
 :install_python
 echo.
-echo  Instalando o Python (pode levar alguns minutos)...
+echo  Instalando o Python 3.12 (pode levar alguns minutos)...
+rem gerenciador novo do Python ("py install"), se existir
+py install --help >nul 2>nul
+if errorlevel 1 goto install_winget
+py install -y 3.12
+call :find_python
+if defined PY goto :eof
+:install_winget
 where winget >nul 2>nul
 if errorlevel 1 goto install_site
 winget install -e --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
@@ -130,7 +162,7 @@ if not exist "%PYINST%" (
   echo  Nao consegui baixar o instalador do Python. Verifique a internet.
   goto :eof
 )
-"%PYINST%" /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 InstallLauncherAllUsers=0 Include_test=0
+"%PYINST%" /quiet InstallAllUsers=0 PrependPath=0 Include_launcher=1 InstallLauncherAllUsers=0 Include_test=0
 del "%PYINST%" >nul 2>nul
 goto :eof
 
@@ -155,6 +187,6 @@ exit /b 1
 
 :erro_pip
 echo  Falha ao instalar as bibliotecas (verifique a internet) e rode de novo.
-echo  O painel ja esta instalado; so a transcricao ficou faltando.
+echo  O painel ja esta instalado; so o Python/transcricao ficou faltando.
 pause
 exit /b 1

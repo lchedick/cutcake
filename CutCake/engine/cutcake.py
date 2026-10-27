@@ -734,15 +734,60 @@ def cmd_check():
         res["faster_whisper"] = getattr(faster_whisper, "__version__", "?")
     except Exception as e:
         res["error"] = "faster-whisper não instalado (%s)" % e
+    try:
+        import av
+        res["av"] = getattr(av, "__version__", "?")
+    except Exception:
+        res["av"] = ""
     res["cuda"] = cuda_available()
     print(json.dumps(res, ensure_ascii=False))
+
+
+def run_sync(task, prog):
+    try:
+        import av  # noqa: F401
+        import numpy  # noqa: F401
+    except Exception:
+        fail("falta o básico do Python para sincronizar. Rode o instalador do CutCake de novo (opção 1 ou 2).")
+    import sync as syncmod
+    opts = task.get("sync") or {}
+    speech_factory = None
+    has_whisper = True
+    try:
+        import faster_whisper  # noqa: F401
+    except Exception:
+        has_whisper = False
+    if has_whisper and opts.get("speech", "auto") != "never":
+        base = {"model": task.get("model"), "device": task.get("device"), "language": task.get("language") or "pt"}
+        ref_words = {}
+
+        def words_of(media, a, b):
+            job = {"media": media, "in": a, "out": b, "seq_start": a, "speed": 1, "name": os.path.basename(media)}
+            tr, _, _ = get_transcripts(dict(base, jobs=[job]), lambda p: None)
+            return tr[0]["words"] if tr else []
+
+        def speech_factory(ref, item):
+            def speech(a, b):
+                if "w" not in ref_words:
+                    log("STATUS O som não bateu: comparando pela fala (transcrevendo a referência)...")
+                    dur = syncmod.media_duration(ref["media"])
+                    ref_words["w"] = words_of(ref["media"], 0.0, dur)
+                seg = words_of(item["media"], a, b)
+                return syncmod.speech_lag(ref_words["w"], seg)
+            return speech
+    try:
+        res = syncmod.run(task, cache_dir(), prog, log, speech_factory)
+    except RuntimeError as e:
+        fail(str(e))
+    res["whisper"] = has_whisper
+    return res
 
 
 def cmd_run(task_path, out_path):
     with open(task_path, "r", encoding="utf-8") as fh:
         task = json.load(fh)
     action = task.get("action")
-    if action not in ("hunt", "captions", "transcribe"):
+    if action not in ("hunt", "captions", "transcribe", "sync"):
         fail("ação desconhecida: %s" % action)
     t0 = time.time()
     last = [0.0]
@@ -751,6 +796,13 @@ def cmd_run(task_path, out_path):
         p = max(last[0], min(0.97, p * 0.95))
         last[0] = p
         log("PROGRESS %.3f" % p)
+
+    if action == "sync":
+        res = run_sync(task, prog)
+        log("PROGRESS 1.0")
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(res, fh, ensure_ascii=False)
+        return
 
     try:
         import faster_whisper  # noqa: F401

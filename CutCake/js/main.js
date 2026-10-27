@@ -119,13 +119,13 @@
   function load(k, d) { try { var v = localStorage.getItem("cc_" + k); return v === null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem("cc_" + k, v); } catch (e) {} }
   var DEF = {
-    tab: "hunt", hCount: "5", hMin: "30", hMax: "90", hReplace: "1", hRange: "1",
+    tab: "hunt", sPoints: "4", sSeg: "15", sSpeech: "auto", hCount: "5", hMin: "30", hMax: "90", hReplace: "1", hRange: "1",
     capStyle: "rise", capMode: "line", cWords: "4", cChars: "24", cDur: "25", cDist: "40", cUpper: "0", cPunct: "1", cRange: "1",
     zAmount: "15", zRamp: "4", zFocus: "0.5", zForce: "0",
     rPreset: "", rFolder: "", rName: "{data} - corte {n}", rStart: "1",
     model: "auto", gpu: "1", colorCut: "0", colorZoom: "4", lists: "",
     sounds: "1", vol: "100", notify: "1", fgonly: "1", autoupd: "1", ui: "1",
-    tab_hunt: "1", tab_captions: "1", tab_zoom: "1", tab_render: "1"
+    tab_sync: "1", tab_hunt: "1", tab_captions: "1", tab_zoom: "1", tab_render: "1"
   };
   // cores de marcador do Premiere (indice da API)
   var COLORS = [
@@ -163,13 +163,16 @@
   }
   window.addEventListener("resize", fitActions);
 
-  var SLIDERS = ["hCount", "hMin", "hMax", "cWords", "cChars", "cDur", "cDist", "zAmount", "zRamp", "vol"];
+  var SLIDERS = ["sPoints", "sSeg", "hCount", "hMin", "hMax", "cWords", "cChars", "cDur", "cDist", "zAmount", "zRamp", "vol"];
   var CHECKS = { hReplace: "hReplace", hRange: "hRange", cUpper: "cUpper", cPunct: "cPunct", cRange: "cRange", zForce: "zForce",
                  rStart: "rStart", optGpu: "gpu", optSounds: "sounds", optNotify: "notify", optFgOnly: "fgonly", optAutoUpd: "autoupd" };
   function refresh() {
     // a duracao maxima nunca fica abaixo da minima
     if (Number($("hMax").value) < Number($("hMin").value) + 10) $("hMax").value = Math.min(180, Number($("hMin").value) + 10);
     SLIDERS.forEach(function (id) { paintRange($(id)); save(id === "vol" ? "vol" : id, $(id).value); });
+    $("sPointsV").textContent = plural(Number($("sPoints").value), "ponto", "pontos");
+    $("sSegV").textContent = $("sSeg").value + "s";
+    $("sumSync").textContent = $("sPoints").value + " × " + $("sSeg").value + "s" + (segVal("sSpeech") === "always" ? " · pela fala" : segVal("sSpeech") === "never" ? " · só som" : "");
     $("hCountV").textContent = plural(Number($("hCount").value), "corte", "cortes");
     $("hMinV").textContent = $("hMin").value + "s"; $("hMaxV").textContent = $("hMax").value + "s";
     $("cWordsV").textContent = $("cWords").value; $("cCharsV").textContent = $("cChars").value;
@@ -200,6 +203,7 @@
     Object.keys(CHECKS).forEach(function (id) { $(id).checked = load(CHECKS[id], DEF[CHECKS[id]]) === "1"; });
     $("py").value = load("py", defaultPy());
     $("rName").value = load("rName", DEF.rName);
+    setSeg("sSpeech", load("sSpeech", DEF.sSpeech));
     setSeg("capStyle", load("capStyle", DEF.capStyle));
     setSeg("capMode", load("capMode", DEF.capMode));
     setSeg("zFocus", load("zFocus", DEF.zFocus));
@@ -211,7 +215,7 @@
     applyTabs();
     refresh();
   }
-  [["capStyle", "capStyle"], ["capMode", "capMode"], ["zFocus", "zFocus"], ["model", "model"]].forEach(function (p) {
+  [["sSpeech", "sSpeech"], ["capStyle", "capStyle"], ["capMode", "capMode"], ["zFocus", "zFocus"], ["model", "model"]].forEach(function (p) {
     $(p[0]).addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       setSeg(p[0], b.dataset.v); save(p[1], b.dataset.v); refresh();
@@ -223,7 +227,7 @@
   });
   // duplo clique no slider volta ao padrao
   SLIDERS.forEach(function (id) { $(id).addEventListener("dblclick", function () { $(id).value = DEF[id]; refresh(); }); });
-  ["moreHunt", "moreCap", "moreZoom", "foldPy", "foldSup", "foldHunt"].forEach(function (id) {
+  ["moreSync", "moreHunt", "moreCap", "moreZoom", "foldPy", "foldSup", "foldHunt"].forEach(function (id) {
     $(id).open = load("open_" + id, "0") === "1";
     $(id).addEventListener("toggle", function () { save("open_" + id, $(id).open ? "1" : "0"); });
   });
@@ -320,10 +324,10 @@
   // ------------------------------------------------------------ fila (uma por aba)
   // item: { name, state, progress, msg, t (tempo na sequencia, para clicar), pct (selo), dur, jobID }
   var Q = {
-    hunt: { items: [], title: "Fila" }, captions: { items: [], title: "Fila" },
+    sync: { items: [], title: "Fila" }, hunt: { items: [], title: "Fila" }, captions: { items: [], title: "Fila" },
     zoom: { items: [], title: "Resultado" }, render: { items: [], title: "Fila do Media Encoder" }
   };
-  var RUN_ICON = { hunt: "Hunt", captions: "Captions", zoom: "Zoom", render: "Render" };
+  var RUN_ICON = { sync: "Sync", hunt: "Hunt", captions: "Captions", zoom: "Zoom", render: "Render" };
   var ST = { queued: "Na fila", ok: "Pronto", fail: "Falhou", skip: "Pulado", cancel: "Cancelado", info: "" };
   function iconFor(it, k) {
     if (it.state === "running") return [RUN_ICON[k] || "Queue", "c-accent"];
@@ -413,7 +417,7 @@
       var t = fs.readFileSync(path.join(EXT, "python_path.txt"), "utf8").trim();
       if (t) return t;
     } catch (e) {}
-    return IS_WIN ? "py -3" : "python3";
+    return IS_WIN ? "py -3.12" : "python3";
   }
   // separa o comando respeitando aspas: "C:\Users\Lucas Chedick\python.exe" -3
   function splitCmd(str) {
@@ -491,7 +495,7 @@
 
   function setBusy(b, kind) {
     busyEngine = b;
-    ["huntBtn", "huntClear", "capCreate", "capUpgrade", "updateBtn", "hdrUpdate", "installWhisper", "testPy", "clearCache"].forEach(function (id) { $(id).disabled = b; });
+    ["syncBtn", "sRead", "huntBtn", "huntClear", "capCreate", "capUpgrade", "updateBtn", "hdrUpdate", "installWhisper", "testPy", "clearCache"].forEach(function (id) { $(id).disabled = b; });
     refresh();
     if (!b) $("cancel").disabled = false;
   }
@@ -548,6 +552,110 @@
   function friendly(e) {
     return e.message === "__cancel__" ? "cancel" : e.message;
   }
+
+  // ------------------------------------------------------------ SINCRONIZAR
+  var lastSync = null;   // para desfazer: { sequenceId, moves }
+  function groupLabel(g) {
+    var tr = g.items.map(function (i) { return (i.type === "Audio" ? "A" : "V") + (i.track + 1); }).join("+");
+    return g.name + " (" + tr + ")";
+  }
+  function fillRefs(sel) {
+    var cur = $("sRef").value, html = '<option value="">Automático: a trilha de áudio mais baixa</option>';
+    sel.groups.forEach(function (g) { html += '<option value="' + esc(g.key) + '">' + esc(groupLabel(g)) + "</option>"; });
+    $("sRef").innerHTML = html;
+    if (sel.groups.some(function (g) { return g.key === cur; })) $("sRef").value = cur;
+  }
+  $("sRead").addEventListener("click", async function () {
+    try {
+      var sel = await host("cc_syncGroups");
+      fillRefs(sel);
+      var auto = sel.groups.filter(function (g) { return g.key === sel.ref; })[0];
+      qStatus("sync", plural(sel.groups.length, "clipe selecionado", "clipes selecionados") + ". No automático, a referência é " + (auto ? auto.name : "?") + ".", "ok");
+    } catch (e) { qStatus("sync", e.message, "err"); }
+  });
+  function fmtDelta(d) { return (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(3).replace(".", ",") + " s"; }
+  $("syncBtn").addEventListener("click", async function () {
+    if (busyEngine) return;
+    $("log").textContent = ""; qStatus("sync", "");
+    var sel;
+    try { sel = await host("cc_syncGroups"); }
+    catch (e) { qStatus("sync", e.message, "err"); return; }
+    fillRefs(sel);
+    var refKey = $("sRef").value && sel.groups.some(function (g) { return g.key === $("sRef").value; }) ? $("sRef").value : sel.ref;
+    var ref = sel.groups.filter(function (g) { return g.key === refKey; })[0];
+    var others = sel.groups.filter(function (g) { return g.key !== refKey; });
+    var t0 = Date.now(), n = others.length;
+    startQueue("sync", "Sincronizar com " + ref.name, others.map(function (g, i) {
+      return { name: g.name, state: "queued", progress: 0, w0: 0.4 + 0.6 * i / n, w: 0.6 / n, msg: "" };
+    }), sel.sequenceId);
+    Q.sync.sub = "Referência: " + groupLabel(ref);
+    var pick = function (g) { return { key: g.key, media: g.media, "in": g["in"], out: g.out, seq_start: g.seq_start, speed: g.speed, name: g.name }; };
+    var task = { action: "sync", model: segVal("model") || "auto", device: $("optGpu").checked ? "auto" : "cpu", language: "pt",
+                 ref: pick(ref), items: others.map(pick),
+                 sync: { points: Number($("sPoints").value), seg: Number($("sSeg").value), speech: segVal("sSpeech") || "auto" } };
+    try {
+      var res = await engineTask(task, jobHandlers("sync", t0));
+      var moves = [], byKey = {};
+      others.forEach(function (g) { byKey[g.key] = g; });
+      res.results.forEach(function (r, i) {
+        var it = Q.sync.items[i], g = byKey[r.key];
+        it.progress = 1;
+        if (!r.ok) { it.state = "fail"; it.msg = r.msg || "Não achei este áudio na referência."; return; }
+        it.pct = r.pct;
+        var info = r.agree + " de " + r.total + " pontos" + (r.method === "fala" ? " · pela fala" : "");
+        if (r.pct < 50) { it.state = "skip"; it.st = "Não movi"; it.msg = "Não tenho certeza (" + info + "). Confira à mão."; return; }
+        it.state = "ok"; it.st = fmtDelta(r.delta);
+        it.msg = "Andou " + fmtDelta(r.delta) + " · " + info +
+          (r.drift_frames >= 1 ? " · a câmera escorrega ~" + Math.round(r.drift_frames) + (Math.round(r.drift_frames) === 1 ? " quadro" : " quadros") + " ao longo do clipe" : "");
+        it.t = g.seq_start + r.delta;
+        moves.push({ key: g.key, delta: r.delta, items: g.items, name: g.name });
+      });
+      renderQueue();
+      if (!moves.length) { endQueue("sync", true); qStatus("sync", "Nenhum clipe foi movido (veja a fila).", "err", true); play("Alert_FAIL.mp3"); return; }
+      // ninguem pode ir para antes do 0: se precisar, empurra todo mundo (a referencia tambem)
+      var minStart = Math.min.apply(null, moves.map(function (m) { return byKey[m.key].seq_start + m.delta; }));
+      if (minStart < 0) {
+        var shift = -minStart;
+        moves.forEach(function (m) { m.delta += shift; });
+        moves.push({ key: ref.key, delta: shift, items: ref.items, name: ref.name });
+        Q.sync.sub = "Tudo foi empurrado " + fmtDelta(shift) + " para nenhum clipe ficar antes do começo da timeline.";
+      }
+      var mv = await host("cc_syncMove", { sequenceId: sel.sequenceId, moves: moves });
+      if (!mv.ok && mv.reason) {
+        Q.sync.items.forEach(function (x) { if (x.state === "ok") { x.state = "skip"; x.st = "Não movi"; } });
+        endQueue("sync", true);
+        qStatus("sync", (mv.reason === "overlap" ? "Não movi nada: algum clipe cairia em cima de outro. Abra espaço na trilha: " : "Não movi nada: algum clipe iria para antes do começo: ") +
+                mv.names.slice(0, 3).join("; ") + (mv.names.length > 3 ? "…" : ""), "err", true);
+        play("Alert_FAIL.mp3");
+        return;
+      }
+      lastSync = { sequenceId: sel.sequenceId, moves: moves.map(function (m) { return { key: m.key, delta: -m.delta, items: m.items }; }) };
+      $("syncUndo").disabled = false;
+      endQueue("sync", mv.fails && mv.fails.length);
+      var okN = Q.sync.items.filter(function (x) { return x.state === "ok"; }).length;
+      var bad = Q.sync.items.length - okN;
+      if (mv.fails && mv.fails.length) qStatus("sync", "Não consegui mover: " + mv.fails.join(", "), "err", true);
+      else qMission("sync", plural(okN, "clipe sincronizado", "clipes sincronizados"), fmtTime((Date.now() - t0) / 1000), bad ? plural(bad, "para conferir", "para conferir") : "");
+      play(bad ? "Alert_FAIL.mp3" : "Alert_OK.mp3");
+      notifyEnd(bad ? "Sincronização com pendências" : "Missão cumprida!", plural(okN, "clipe sincronizado", "clipes sincronizados") + ".");
+    } catch (e) {
+      var m = friendly(e);
+      Q.sync.items.forEach(function (x) { if (x.state === "running" || x.state === "queued") x.state = m === "cancel" ? "cancel" : "fail"; });
+      endQueue("sync", m === "cancel" ? "cancel" : true);
+      if (m === "cancel") qStatus("sync", "Sincronização cancelada.");
+      else { qStatus("sync", m, "err", true); play("Alert_FAIL.mp3"); }
+    }
+  });
+  $("syncUndo").addEventListener("click", async function () {
+    if (!lastSync) return;
+    try {
+      var r = await host("cc_syncMove", lastSync);
+      if (!r.ok) throw new Error(r.reason ? "algum clipe cairia em cima de outro." : "não consegui mover: " + (r.fails || []).join(", "));
+      lastSync = null; $("syncUndo").disabled = true;
+      Q.sync.items = []; renderQueue();
+      qStatus("sync", "Pronto: os clipes voltaram para onde estavam.", "ok", true);
+    } catch (e) { qStatus("sync", "Não consegui desfazer: " + e.message + " Use Ctrl+Z no Premiere.", "err"); }
+  });
 
   // ------------------------------------------------------------ CAÇAR
   $("huntBtn").addEventListener("click", async function () {
@@ -1001,8 +1109,15 @@
       var out = await runPy([engineFile(), "check"]);
       var r = JSON.parse(out.trim().split(/\r?\n/).pop());
       lastCheck = r;
-      if (!r.faster_whisper) {
-        el.className = "notif-status err"; el.textContent = "✗ A transcrição não está instalada.";
+      var pv = String(r.python || "").split(".").map(Number);
+      var tooNew = pv[0] === 3 && pv[1] > 13, tooOld = pv[0] === 3 && pv[1] < 10;
+      if (!r.faster_whisper && (tooNew || tooOld)) {
+        el.className = "notif-status err";
+        el.textContent = "✗ O Python " + r.python + " não serve para a transcrição (precisa do 3.10 ao 3.13). Rode o instalador do CutCake de novo: ele instala o Python 3.12 ao lado.";
+        $("installWhisper").hidden = true;
+      } else if (!r.faster_whisper) {
+        el.className = "notif-status err";
+        el.textContent = r.av ? "✓ O básico do Sincronizar está instalado · ✗ a transcrição não (Caçar e Legendar precisam dela)." : "✗ A transcrição não está instalada.";
         $("installWhisper").textContent = "Instalar transcrição"; $("installWhisper").hidden = false;
       } else {
         var gpu = r.cuda ? "placa de vídeo" + (r.gpu ? " (" + r.gpu + ")" : "") : (r.gpu ? "processador (a placa " + r.gpu + " não está pronta)" : "processador");

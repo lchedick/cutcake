@@ -490,6 +490,104 @@ function cc_render(d) {
     } catch (e) { return cc_err("Erro ao mandar para o Media Encoder: " + e.toString()); }
 }
 
+// ------------------------------------------------------------ sincronizar
+// Agrupa os clipes selecionados por arquivo (o video e o audio ligados a ele andam juntos).
+function cc_trackMap(seq) {
+    var map = {}, kinds = [["Video", seq.videoTracks], ["Audio", seq.audioTracks]];
+    for (var k = 0; k < kinds.length; k++) {
+        var trs = kinds[k][1];
+        for (var i = 0; i < trs.numTracks; i++) {
+            for (var j = 0; j < trs[i].clips.numItems; j++) {
+                var c = trs[i].clips[j];
+                map[c.nodeId] = { type: kinds[k][0], track: i, clip: c };
+            }
+        }
+    }
+    return map;
+}
+function cc_syncGroups() {
+    try {
+        var seq = app.project.activeSequence;
+        if (!seq) return cc_err("Abra a sequência com os clipes na timeline.");
+        var sel = seq.getSelection(), map = cc_trackMap(seq), groups = [], byKey = {}, skipped = [];
+        for (var i = 0; i < sel.length; i++) {
+            var it = sel[i];
+            if (it.mediaType !== "Video" && it.mediaType !== "Audio") continue;
+            var media = cc_mediaPath(it);
+            if (!media) { skipped.push(it.name); continue; }
+            var st = cc_sec(it.start), key = media + "|" + Math.round(st * 100);
+            var g = byKey[key];
+            if (!g) {
+                g = { key: key, media: media, name: it.name, "in": cc_round(cc_sec(it.inPoint)), out: cc_round(cc_sec(it.outPoint)),
+                      seq_start: cc_round(st), seq_end: cc_round(cc_sec(it.end)), speed: cc_speed(it), items: [], audioTrack: 999, hasVideo: false };
+                byKey[key] = g; groups.push(g);
+            }
+            var info = map[it.nodeId] || { type: it.mediaType, track: 0 };
+            g.items.push({ nodeId: it.nodeId, type: info.type, track: info.track });
+            if (info.type === "Audio") g.audioTrack = Math.min(g.audioTrack, info.track);
+            else g.hasVideo = true;
+        }
+        if (groups.length < 2) return cc_err("Selecione pelo menos 2 clipes na timeline (a referência e os que vão andar).");
+        // referencia padrao: o clipe da trilha de audio mais baixa (ex.: audio da mesa)
+        var ref = 0;
+        for (i = 1; i < groups.length; i++) if (groups[i].audioTrack < groups[ref].audioTrack) ref = i;
+        return cc_str({ sequenceId: seq.sequenceID, groups: groups, ref: groups[ref].key, skipped: skipped });
+    } catch (e) { return cc_err("Erro ao ler a seleção: " + e.toString()); }
+}
+function cc_moveItem(c, delta) {
+    var target = cc_sec(c.start) + delta;
+    if (Math.abs(delta) < 1e-6) return true;
+    try { var t = new Time(); t.seconds = delta; c.move(t); } catch (e) { try { c.move(delta); } catch (e2) {} }
+    if (Math.abs(cc_sec(c.start) - target) < 0.002) return true;
+    // em algumas versoes o move recebe a posicao final, e nao o deslocamento
+    try { var t2 = new Time(); t2.seconds = target; c.move(t2); } catch (e3) {}
+    return Math.abs(cc_sec(c.start) - target) < 0.002;
+}
+// d = { sequenceId, moves:[{ key, delta, items:[{nodeId, type, track}] }], check }
+function cc_syncMove(d) {
+    try {
+        var seq = cc_findSequence(d.sequenceId);
+        if (!seq) return cc_err("A sequência não existe mais.");
+        var map = cc_trackMap(seq), mine = {}, i, j, k;
+        for (i = 0; i < d.moves.length; i++) for (j = 0; j < d.moves[i].items.length; j++) mine[d.moves[i].items[j].nodeId] = true;
+        // nao pode ir para antes do 0 nem cair em cima de outro clipe
+        var conflicts = [], before = [];
+        for (i = 0; i < d.moves.length; i++) {
+            var mv = d.moves[i];
+            for (j = 0; j < mv.items.length; j++) {
+                var inf = map[mv.items[j].nodeId];
+                if (!inf) continue;
+                var ns = cc_sec(inf.clip.start) + mv.delta, ne = cc_sec(inf.clip.end) + mv.delta;
+                if (ns < -0.001) before.push(inf.clip.name);
+                var trs = inf.type === "Audio" ? seq.audioTracks : seq.videoTracks, tr = trs[inf.track];
+                for (k = 0; k < tr.clips.numItems; k++) {
+                    var o = tr.clips[k];
+                    if (mine[o.nodeId]) continue;
+                    if (cc_sec(o.end) > ns + 0.001 && cc_sec(o.start) < ne - 0.001)
+                        conflicts.push(inf.clip.name + " → " + o.name + " (" + (inf.type === "Audio" ? "A" : "V") + (inf.track + 1) + ")");
+                }
+            }
+        }
+        if (before.length) return cc_str({ ok: false, reason: "before", names: before });
+        if (conflicts.length) return cc_str({ ok: false, reason: "overlap", names: conflicts });
+        if (d.check) return cc_str({ ok: true, checked: true });
+        var moved = 0, fails = [];
+        for (i = 0; i < d.moves.length; i++) {
+            var m2 = d.moves[i], starts = [];
+            for (j = 0; j < m2.items.length; j++) { var f = map[m2.items[j].nodeId]; starts.push(f ? cc_sec(f.clip.start) : 0); }
+            for (j = 0; j < m2.items.length; j++) {
+                var inf2 = map[m2.items[j].nodeId];
+                if (!inf2) continue;
+                var want = starts[j] + m2.delta, cur = cc_sec(inf2.clip.start);
+                if (Math.abs(cur - want) < 0.002) continue;          // ja andou junto com o clipe ligado
+                if (!cc_moveItem(inf2.clip, want - cur)) fails.push(inf2.clip.name);
+            }
+            moved++;
+        }
+        return cc_str({ ok: !fails.length, moved: moved, fails: fails });
+    } catch (e) { return cc_err("Erro ao mover os clipes: " + e.toString()); }
+}
+
 // ------------------------------------------------------------ utilidades
 function cc_goTo(d) {
     try {

@@ -73,4 +73,26 @@ let pass=0; const ok=(c,m)=>{ assert.ok(c,m); pass++; };
   ok(JSON.parse(ctx.cc_presetExt({sequenceId:"seq1", preset:"x"})).ext==="mp4", "ext");
   JSON.parse(ctx.cc_goTo({sequenceId:"seq1", t:12.5})); ok(Math.abs(seq.player-12.5)<1e-6, "goto");
 }
+// ---- 7. sincronizar: grupos, referencia e mover
+{
+  const camV=new M.Clip({name:"cam.mp4", start:5, end:305, inPoint:0, media:"C:/cam.mp4", selected:true});
+  const camA=new M.Clip({name:"cam.mp4", mediaType:"Audio", start:5, end:305, inPoint:0, media:"C:/cam.mp4", selected:true});
+  camV.linked=[camA]; camA.linked=[camV];
+  const mesa=new M.Clip({name:"mesa.wav", mediaType:"Audio", start:0, end:600, inPoint:0, media:"C:/mesa.wav", selected:true});
+  const outro=new M.Clip({name:"outro.mp4", start:400, end:500, inPoint:0, media:"C:/outro.mp4"});
+  const seq=new M.Seq({video:[[camV, outro]], audio:[[mesa],[camA]], endSec:600}); const {ctx}=load(seq);
+  let r=JSON.parse(ctx.cc_syncGroups());
+  ok(r.groups.length===2 && r.ref.indexOf("mesa")>=0, "2 grupos e a referência é a trilha de áudio mais baixa");
+  const cam=r.groups.filter(g=>g.media==="C:/cam.mp4")[0];
+  ok(cam.items.length===2 && cam.hasVideo && cam.audioTrack===1, "vídeo e áudio da câmera no mesmo grupo");
+  r=JSON.parse(ctx.cc_syncMove({sequenceId:"seq1", moves:[{key:cam.key, delta:118.47, items:cam.items}]}));
+  ok(!r.ok && r.reason==="overlap" && /outro/.test(r.names[0]), "avisa que cairia em cima de outro clipe");
+  outro.start=new M.Time(450); outro.end=new M.Time(520);
+  r=JSON.parse(ctx.cc_syncMove({sequenceId:"seq1", moves:[{key:cam.key, delta:-10, items:cam.items}]}));
+  ok(!r.ok && r.reason==="before", "avisa se iria para antes do zero");
+  r=JSON.parse(ctx.cc_syncMove({sequenceId:"seq1", moves:[{key:cam.key, delta:118.47, items:cam.items}]}));
+  ok(r.ok && r.moved===1, "move a câmera");
+  ok(Math.abs(camV.start.seconds-123.47)<1e-6 && Math.abs(camA.start.seconds-123.47)<1e-6, "vídeo e áudio andam juntos, uma vez só");
+  ok(mesa.start.seconds===0, "a referência fica parada");
+}
 console.log("host.jsx: " + pass + " checagens ok");
