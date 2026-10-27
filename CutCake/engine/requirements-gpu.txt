@@ -1,0 +1,3 @@
+# placa de video NVIDIA (Windows): bibliotecas do CUDA 12 usadas pelo faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

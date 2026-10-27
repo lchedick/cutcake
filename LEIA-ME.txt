@@ -1,0 +1,89 @@
+﻿CUTCAKE • CORTES, LEGENDAS E ZOOM
+=================================
+
+Painel para Adobe Premiere Pro que acha os melhores trechos da pregação,
+cria legendas animadas, dá zoom de ênfase e manda os cortes para o
+Media Encoder.
+
+
+INSTALAÇÃO - WINDOWS
+--------------------
+1. Feche o Premiere.
+2. Dê dois cliques em instalar_Windows.bat.
+   (Se o Windows mostrar "O Windows protegeu o computador", clique em
+   "Mais informações" > "Executar assim mesmo".)
+3. O instalador pergunta se você quer instalar a transcrição (Whisper).
+   Ela é usada pelo Caçador e para criar as legendas. Responda: "S".
+   Se o Python não estiver instalado, ele instala sozinho (não precisa
+   de senha de administrador). Com placa de vídeo NVIDIA, o download
+   fica com cerca de 3 GB.
+4. Quando aparecer "Pronto!", abra o Premiere e vá em:
+   Window > Extensions > CutCake • Cortes, legendas e zoom
+
+
+INSTALAÇÃO - MAC (BETA)
+-----------------------
+1. Feche o Premiere.
+2. Clique com o botão direito em instalar_MacOS.command > Abrir > Abrir.
+3. Responda "S" para instalar a transcrição. Se o Python não estiver
+   instalado, o Mac vai pedir a senha do computador.
+4. Quando aparecer "Pronto!", abra o Premiere e vá em:
+   Window > Extensions > CutCake • Cortes, legendas e zoom
+
+=================================
+
+AS 4 ABAS
+---------
+CAÇAR
+  Caçar trechos:      transcreve o áudio e marca os melhores trechos como
+                      marcadores com duração (cor de corte), com nome
+                      "Corte 3 • 87%". O comentário do marcador mostra a
+                      primeira frase e o motivo (pergunta, voz forte...).
+  Limpar marcadores:  apaga os marcadores que o Caçador criou.
+  Sem nada selecionado, usa a primeira trilha de áudio. Se tiver In e Out
+  marcados, usa só esse trecho. A transcrição fica guardada: rodar de novo
+  com outros ajustes é instantâneo.
+
+LEGENDAR
+  1. Criar legendas:  escolha a animação e o ritmo e clique. O CutCake cria
+                      uma trilha de legendas no ritmo da fala.
+  2. Upgrade para gráfico: selecione as legendas e clique (é o mesmo que
+                      Gráficos e Títulos > Upgrade Caption to Graphic).
+  3. Animar subida:   selecione os gráficos e clique. A máquina de escrever
+                      não precisa deste passo: ela já vem nas legendas.
+
+ZOOM
+  Marque os trechos com marcadores com duração na cor do zoom (ou marque
+  In e Out e clique em "Marcar zoom"). Depois clique em "Aplicar zoom".
+  O zoom entra no começo do marcador e sai no fim, e funciona por cima do
+  tracking do GTA.
+
+RENDER
+  Usa os marcadores com duração na cor de corte. Escolha o preset, a pasta
+  e o nome dos arquivos (ex.: "{data} - corte {n}" vira "18.10 - corte 3")
+  e clique em "Renderizar cortes".
+
+
+CONFIGURAÇÕES (engrenagem no topo)
+----------------------------------
+Transcrição:   modelo (Automático, Rápido ou Preciso), placa de vídeo e
+               botão "Instalar transcrição".
+Marcadores:    cor dos marcadores de corte e de zoom.
+Caçador:       as palavras que dão ou tiram ponto dos trechos.
+Avisos:        sons, volume, notificação e atualização automática.
+Interface:     tamanho e quais abas aparecem.
+Suporte:       copiar diagnóstico, restaurar padrões, reiniciar o Premiere,
+               limpar transcrições e ver o log.
+
+
+ATUALIZAÇÃO
+-----------
+Quando sair uma versão nova, aparece uma bolinha verde no botão de
+atualizar. Clique em "Atualizar" e depois em "Reiniciar o Premiere agora".
+
+
+PROBLEMAS?
+----------
+Configurações > Suporte > Copiar diagnóstico e envie para o Lucas.
+
+CutCake | Desenvolvido por Lucas Chedick | Licença MIT

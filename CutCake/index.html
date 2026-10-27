@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>CutCake • Cortes, legendas e zoom</title>
+<style>
+  :root {
+    --bg:#232323; --panel:#2a2a2a; --panel2:#1d1d1d; --line:#383838;
+    --text:#d4d4d4; --muted:#8c8c8c;
+    --accent:#2d8ceb; --accent-h:#4a9ff0; --err:#e5584f; --ok:#4caf72; --ok-h:#5cc183; --warn:#d9a23b;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:12px/1.45 "Segoe UI", system-ui, sans-serif; }
+  html, body { overflow-x:hidden; }
+  body { padding:10px 12px 0; display:flex; flex-direction:column; min-height:100vh; }
+  main { flex:1; }
+  [hidden] { display:none !important; }
+
+  /* icones em SVG (js/icons.js): a cor vem do CSS (currentColor) */
+  .ico { display:inline-block; width:48px; height:48px; flex:none; color:#bababa; }
+  .ico svg, .logo svg { display:block; width:100%; height:100%; }
+  .btn:not(.secondary) .ico, .update .ico, .styles .stylebtn.on .ico { color:#fff; }
+  .c-accent { color:var(--accent-h) !important; } .c-ok { color:var(--ok) !important; }
+  .c-err { color:var(--err) !important; } .c-warn { color:var(--warn) !important; }
+  .logo { display:block; flex:none; height:44px; width:46px; color:var(--accent-h); margin-right:4px; }
+  .ico.lg { width:54px; height:54px; }
+  .ico.sm { width:28px; height:28px; }
+
+  /* cabecalho */
+  header { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  header h1 { flex:1; min-width:0; margin:0 0 0 2px; display:flex; flex-direction:column; line-height:1.15; white-space:nowrap; overflow:hidden; }
+  header h1 .t1 { font-size:17px; font-weight:700; letter-spacing:1px; color:#fff; }
+  header h1 .t2 { font-size:12px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; }
+  .iconbtn { position:relative; background:none; border:0; padding:3px; border-radius:4px; cursor:pointer; display:flex; }
+  .iconbtn:hover { background:#333; }
+  .iconbtn:hover .ico { filter:brightness(1.35); }
+  .iconbtn .dot { position:absolute; top:5px; right:5px; width:11px; height:11px; border-radius:50%; background:var(--ok);
+                  box-shadow:0 0 0 2px var(--bg); display:none; }
+  .iconbtn.has-update .dot { display:block; }
+  .iconbtn.spin .ico { animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .update { display:none; align-items:center; gap:8px; background:#1e3628; border:1px solid #2f6a45; color:#cdeed9;
+            border-radius:4px; padding:7px 8px; margin-bottom:10px; }
+  .update.show { display:flex; }
+  .update span { flex:1; }
+  .update button { background:var(--ok); color:#fff; border:0; border-radius:3px; padding:4px 9px; cursor:pointer; font-size:11px; font-weight:600; }
+
+  /* botoes */
+  .btn { display:flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:4px; padding:6px 10px;
+         font-size:12px; font-weight:600; cursor:pointer; color:#fff; background:var(--accent); }
+  .btn:hover:not(:disabled) { background:var(--accent-h); }
+  .btn.secondary { background:#3a3a3a; color:var(--text); }
+  .btn.secondary:hover:not(:disabled) { background:#454545; }
+  .btn.secondary:hover:not(:disabled) .ico { filter:brightness(1.35); }
+  .btn.green { background:var(--ok); }
+  .btn.green:hover:not(:disabled) { background:var(--ok-h); }
+  .btn:disabled { background:#3a3a3a; color:#777; cursor:default; }
+  .btn:disabled .ico { opacity:.45; }
+  .btn.full { width:100%; }
+  .btn.small { font-size:11.5px; padding:4px 10px; }
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .actions.stack { grid-template-columns:1fr; }
+  .actions.stack .btn { flex-direction:row; gap:10px; }
+  .styles .stylebtn { color:var(--muted); font-weight:500; }
+  .styles .stylebtn.on { background:#22364a; color:#fff; font-weight:600; box-shadow:inset 0 0 0 2px var(--accent); }
+  .qrow { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #pause.paused { background:#3a2f17; color:var(--warn); }
+  #pause.paused .ico { color:var(--warn); }
+  .notes .date { color:var(--muted); font-weight:400; font-size:11.5px; }
+  .notes-sub { color:var(--muted); font-size:11.5px; margin:-2px 0 8px; }
+
+  /* recolhiveis */
+  details > summary { list-style:none; cursor:pointer; user-select:none; }
+  details > summary::-webkit-details-marker { display:none; }
+  .chev { display:inline-block; width:12px; color:var(--muted); transition:transform .15s; margin-right:4px; }
+  details[open] > summary .chev { transform:rotate(90deg); }
+  .more { margin-top:12px; border-top:1px solid var(--line); padding-top:8px; }
+  .more > summary { color:var(--muted); font-size:12px; padding:2px 0; display:flex; align-items:center; white-space:nowrap; }
+  .more > summary .sum { margin-left:auto; font-size:11px; color:#6f6f6f; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-left:8px; }
+  .more[open] > summary .sum { display:none; }
+  .conf { display:inline-block; font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:9px; margin-right:6px; }
+  .conf.hi { background:#1e3628; color:var(--ok); }
+  .conf.mid { background:#3a2f17; color:var(--warn); }
+  .conf.lo { background:#3a1d1b; color:var(--err); }
+  .more > summary:hover { color:var(--text); }
+  .more[open] > summary { margin-bottom:8px; }
+  .sec.fold > summary h3 { margin:0; display:flex; align-items:center; }
+  .sec.fold > summary:hover h3 { color:var(--text); }
+  .sec.fold[open] > summary { margin-bottom:8px; }
+  .actions .btn { flex-direction:column; gap:2px; padding:8px 6px; font-size:12.5px; border-radius:10px; position:relative;
+                  transition:transform .2s ease, background-color .15s ease, box-shadow .15s ease; }
+  .actions .btn:hover:not(:disabled) { transform:scale(1.03); z-index:2; }
+  .actions .btn:active:not(:disabled) { transform:scale(1.01); }
+
+  #status { min-height:16px; margin-top:8px; font-size:11.5px; }
+  #status.err { color:var(--err); } #status.ok { color:var(--ok); }
+  #status.big { font-size:17px; line-height:1.3; margin:10px 0 4px; text-align:center; }
+  #status b { font-weight:700; }
+  #status .notes-btn { margin:8px auto 0; }
+
+  /* Missao cumprida */
+  .mission { text-align:center; padding:6px 0 2px; }
+  .mission .mt { display:inline-block; font-size:24px; font-weight:800; letter-spacing:.5px; color:var(--ok);
+                 background:linear-gradient(100deg, var(--ok) 0%, var(--ok) 40%, #e9fff1 50%, var(--ok) 60%, var(--ok) 100%);
+                 background-size:250% 100%; background-position:100% 0;
+                 -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+                 animation:missionIn .55s cubic-bezier(.2,.9,.3,1.35) both, shine .9s ease-out .5s both; }
+  .mission .ms { font-size:13px; color:var(--ok); margin-top:2px; animation:fadeUp .4s ease-out .35s both; }
+  @keyframes missionIn { from { opacity:0; transform:translateY(10px) scale(.8); } to { opacity:1; transform:none; } }
+  @keyframes shine { from { background-position:100% 0; } to { background-position:0 0; } }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+  /* animacoes dos icones da fila */
+  #queueList .ico.pop { animation:pop .5s cubic-bezier(.2,.9,.3,1.5); }
+  #queueList .ico.shake { animation:shake .45s ease-in-out; }
+  @keyframes pop { 0% { transform:scale(.6); } 60% { transform:scale(1.18); } 100% { transform:scale(1); } }
+  @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-5px) rotate(-4deg); }
+                     40% { transform:translateX(5px) rotate(4deg); } 60% { transform:translateX(-3px); } 80% { transform:translateX(3px); } }
+  #restart { display:none; margin-top:8px; }
+  #restart.show { display:flex; }
+  .restart-hint { display:none; text-align:center; color:var(--muted); font-size:11px; margin-top:4px; }
+  #restart.show + .restart-hint { display:block; }
+
+  /* cartoes e campos */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:10px; margin:10px 0; }
+  .lbl { display:flex; align-items:center; gap:8px; color:var(--muted); margin:2px 0 5px; }
+  .field + .field { margin-top:12px; }
+  .seg { display:flex; background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:2px; gap:2px; }
+  .seg button { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; border-radius:3px;
+                background:none; color:var(--muted); padding:6px 4px; cursor:pointer; font-size:11.5px; }
+  .seg button:hover { color:var(--text); }
+  .seg button.on { background:#3a3a3a; color:#fff; }
+  .seg .on-v, .seg button.on .off-v { display:none; }
+  .seg button.on .on-v { display:inline-block; }
+  .seg.text button { padding:7px 4px; }
+
+  .row { display:flex; align-items:center; gap:8px; }
+  input[type=range] { flex:1; -webkit-appearance:none; appearance:none; height:16px; background:transparent; margin:0; }
+  input[type=range]::-webkit-slider-runnable-track { height:3px; border-radius:2px;
+    background:linear-gradient(var(--accent),var(--accent)) 0/var(--p,50%) 100% no-repeat, #4a4a4a; }
+  input[type=range].center::-webkit-slider-runnable-track { background:var(--track, #4a4a4a); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:#e6e6e6; margin-top:-4.5px; border:0; box-shadow:0 0 0 1px #00000055; }
+  input[type=range]:hover::-webkit-slider-thumb { background:#fff; }
+  .val { min-width:52px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text); white-space:nowrap; }
+  .hint { color:var(--muted); font-size:11px; margin-top:3px; }
+  .check { display:flex; gap:6px; align-items:center; margin-top:12px; cursor:pointer; }
+
+  /* fila */
+  .qhead { display:flex; align-items:center; gap:6px; color:var(--muted); }
+  .qhead .count { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+  .qhead .eta { margin-left:auto; display:flex; align-items:center; gap:4px; font-variant-numeric:tabular-nums; }
+  .bar { height:4px; background:var(--panel2); border-radius:2px; overflow:hidden; }
+  .bar > div { height:100%; width:0; background:var(--accent); transition:width .25s; }
+  .overall { margin:8px 0 6px; }
+  #queueList { list-style:none; margin:0; padding:0; max-height:380px; overflow:auto; }
+  #queueList li { display:grid; grid-template-columns:48px 1fr auto; column-gap:8px; row-gap:3px; align-items:center;
+                  padding:6px 4px; border-top:1px solid var(--line); border-radius:3px; cursor:pointer; }
+  #queueList li:first-child { border-top:0; }
+  #queueList li:hover { background:#323232; }
+  #queueList .name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #queueList .st { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  #queueList .sub { grid-column:2 / 4; }
+  #queueList .msg { grid-column:2 / 4; font-size:11px; color:var(--muted); }
+  #queueList li.running .ico { animation:pulse 1.2s ease-in-out infinite; }
+  #queueList li.fail .msg { color:var(--err); }
+  #queueList li.skip .msg { color:var(--warn); }
+  #queueList li.cancel { opacity:.6; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .empty { color:var(--muted); font-size:11px; padding:4px 0; }
+  .qbtns { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+
+  footer { color:#6f6f6f; font-size:10.5px; text-align:center; padding:10px 0; border-top:1px solid var(--line); margin-top:4px; }
+
+  /* configuracoes (pop-up) */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:flex-start; justify-content:center;
+           padding:24px 10px; z-index:10; overflow:auto; }
+  .modal.show { display:flex; }
+  .sheet { width:100%; max-width:440px; background:var(--bg); border:1px solid #444; border-radius:6px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .sheet-head { display:flex; align-items:center; gap:8px; padding:8px 8px 8px 12px; border-bottom:1px solid var(--line); }
+  .sheet-head h2 { flex:1; margin:0; font-size:13px; font-weight:600; }
+  .close { background:none; border:0; color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:2px 8px; border-radius:4px; }
+  .close:hover { background:#333; color:#fff; }
+  .sheet-body { padding:4px 12px 12px; }
+  .sec { padding:10px 0; border-bottom:1px solid var(--line); }
+  .sec:last-child { border-bottom:0; }
+  .sec h3 { margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:var(--muted); }
+  .switch { display:flex; align-items:center; gap:10px; padding:5px 0; cursor:pointer; }
+  .switch span { flex:1; }
+  .switch input { -webkit-appearance:none; appearance:none; width:30px; height:16px; border-radius:8px; background:#4a4a4a;
+                  position:relative; cursor:pointer; flex:none; margin:0; transition:background .15s; }
+  .switch input::after { content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#ddd; transition:left .15s; }
+  .switch input:checked { background:var(--accent); }
+  .switch input:checked::after { left:16px; background:#fff; }
+  input[type=text] { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:3px; padding:5px 6px; }
+  .inline { display:flex; gap:6px; align-items:center; }
+  .inline input { flex:1; }
+  .result { font-size:11.5px; margin-top:6px; min-height:16px; }
+  .result.ok { color:var(--ok); } .result.err { color:var(--err); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .about { color:var(--muted); font-size:11.5px; line-height:1.6; }
+  .about b { color:var(--text); }
+  .link { color:var(--accent-h); cursor:pointer; text-decoration:underline; }
+  .sound-row { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .sound-row .lbl { margin:0; min-width:56px; }
+  .play { background:#3a3a3a; color:var(--text); border:0; border-radius:3px; padding:4px 8px; cursor:pointer; font-size:11px; }
+  .play:hover { background:#454545; }
+  .notif-status { font-size:11.5px; margin:2px 0 6px; }
+  .notif-status.ok { color:var(--ok); } .notif-status.err { color:var(--warn); }
+
+  /* notas da versao */
+  .notes { font-size:12px; line-height:1.55; }
+  .notes h4 { margin:12px 0 4px; font-size:13px; color:#fff; }
+  .notes h4:first-child { margin-top:4px; }
+  .notes ul { margin:0; padding-left:18px; }
+  .notes li { margin:2px 0; }
+  .notes b { color:#fff; }
+  .notes .older summary { cursor:pointer; color:var(--muted); margin-top:12px; }
+  details.log summary { cursor:pointer; color:var(--muted); font-size:11px; margin-top:8px; display:flex; align-items:center; }
+  pre { white-space:pre-wrap; word-break:break-all; font-size:10px; color:var(--muted); max-height:140px; overflow:auto; margin:6px 0 0;
+        background:var(--panel2); border-radius:3px; padding:6px; }
+
+  /* abas */
+  .tabs { display:flex; gap:2px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:3px; margin-bottom:10px; }
+  .tabs button { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:1px; border:0; background:none;
+                 color:var(--muted); padding:5px 2px 4px; border-radius:6px; cursor:pointer; font-size:11.5px; font-weight:600;
+                 transition:background-color .15s, color .15s; }
+  .tabs button:hover { color:var(--text); background:#2c2c2c; }
+  .tabs button.on { background:#3a3a3a; color:#fff; box-shadow:inset 0 -2px 0 var(--accent); }
+  .tabs button.on .ico { color:var(--accent-h); }
+  .tabs button span { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tabs.compact button span { display:none; }
+  .tab { animation:fadeUp .2s ease-out; }
+
+  .mini { color:var(--muted); font-size:11px; min-width:36px; }
+  input[type=range] { min-width:0; }
+  .pad { margin:2px 2px 8px; }
+  .card.first { margin-top:0; }
+  .seg button .ico.sm { width:24px; height:24px; }
+  .seg button.on .ico { color:#fff; }
+
+  /* passos da legenda */
+  .steps .step { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:11.5px; margin:10px 2px 5px; }
+  .steps .step:first-child { margin-top:2px; }
+  .steps .num { width:18px; height:18px; border-radius:50%; background:#3a3a3a; color:#fff; font-size:10.5px; font-weight:700;
+                display:flex; align-items:center; justify-content:center; flex:none; }
+  .steps .step.off { opacity:.5; }
+  .btn.tall { padding:7px 10px; border-radius:10px; font-size:12.5px; gap:10px; justify-content:flex-start; padding-left:14px;
+              transition:transform .2s ease, background-color .15s ease; }
+  .btn.tall .ico { width:36px; height:36px; }
+  .btn.tall:hover:not(:disabled) { transform:scale(1.03); }
+  .btn.tall:active:not(:disabled) { transform:scale(1.01); }
+
+  /* campos extras */
+  select, textarea { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:3px;
+                     padding:5px 6px; font:inherit; font-size:11.5px; }
+  textarea { resize:vertical; margin-bottom:6px; font-size:11px; line-height:1.4; }
+  select:focus, textarea:focus, input[type=text]:focus { outline:1px solid var(--accent); }
+  .pathrow { display:flex; gap:6px; align-items:center; }
+  .path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left;
+          background:var(--panel2); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font-size:11px; }
+  .swatches { display:flex; gap:6px; flex-wrap:wrap; }
+  .sw { width:26px; height:26px; border-radius:6px; border:2px solid transparent; cursor:pointer; padding:0;
+        transition:transform .15s ease; }
+  .sw:hover { transform:scale(1.08); }
+  .sw.on { border-color:#fff; box-shadow:0 0 0 2px var(--accent); }
+  .sw.taken { opacity:.35; cursor:not-allowed; }
+  .qstatus { color:var(--muted); font-size:11px; margin:-2px 0 4px; }
+  .qstatus:empty { display:none; }
+  #queueList li.info .ico { color:var(--accent-h); }
+
+  /* pergunta (arquivo ja existe etc.) */
+  .sheet.small { max-width:360px; }
+  .ask-body { font-size:12px; line-height:1.5; padding-top:8px; }
+  .ask-body ul { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:11.5px; max-height:140px; overflow:auto; }
+  .ask-btns { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <i class="logo" data-i="Logo"></i>
+    <h1 title="CutCake • Cortes, legendas e zoom"><span class="t1">CUTCAKE</span><span class="t2">Cortes, legendas e zoom</span></h1>
+    <button class="iconbtn" id="hdrUpdate" title="Verificar atualizações"><i class="ico" data-i="Update"></i><span class="dot"></span></button>
+    <button class="iconbtn" id="openConfig" title="Configurações"><i class="ico" data-i="Config"></i></button>
+  </header>
+
+  <div class="update" id="updateBar">
+    <i class="ico sm" data-i="Update"></i>
+    <span id="updateText">Nova versão disponível</span>
+    <button id="updateBtn">Atualizar</button>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="hunt"><i class="ico sm" data-i="Hunt"></i><span>Caçar</span></button>
+    <button data-tab="captions"><i class="ico sm" data-i="Captions"></i><span>Legendar</span></button>
+    <button data-tab="zoom"><i class="ico sm" data-i="Zoom"></i><span>Zoom</span></button>
+    <button data-tab="render"><i class="ico sm" data-i="Render"></i><span>Render</span></button>
+  </nav>
+
+  <!-- ===================================================== CAÇAR -->
+  <section class="tab" id="tab-hunt">
+    <div class="actions">
+      <button class="btn" id="huntBtn" title="Transcreve e marca na timeline os trechos com mais cara de corte">
+        <i class="ico" data-i="Hunt"></i>Caçar trechos</button>
+      <button class="btn secondary" id="huntClear" title="Apaga os marcadores criados pelo Caçador nesta sequência">
+        <i class="ico" data-i="ClearMarkers"></i>Limpar marcadores</button>
+    </div>
+    <div class="card">
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Count"></i>Quantidade de cortes</div>
+        <div class="row"><input id="hCount" type="range" min="1" max="15"><span class="val" id="hCountV"></span></div>
+      </div>
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Duration"></i>Duração de cada corte</div>
+        <div class="row"><span class="mini">mín.</span><input id="hMin" type="range" min="10" max="120" step="5"><span class="val" id="hMinV"></span></div>
+        <div class="row"><span class="mini">máx.</span><input id="hMax" type="range" min="20" max="180" step="5"><span class="val" id="hMaxV"></span></div>
+      </div>
+      <details class="more" id="moreHunt">
+        <summary><span class="chev">▸</span>Mais opções<span class="sum" id="sumHunt"></span></summary>
+        <label class="check"><input id="hReplace" type="checkbox"><span>Apagar os marcadores anteriores do Caçador antes</span></label>
+        <label class="check"><input id="hRange" type="checkbox"><span>Usar só o trecho entre o In e o Out (se tiver)</span></label>
+        <div class="hint">As palavras que o Caçador procura ficam em Configurações → Caçador.</div>
+      </details>
+    </div>
+    <div class="hint pad">Sem nada selecionado, o Caçador usa a primeira trilha de áudio com clipes. Os cortes viram marcadores com duração na cor de corte.</div>
+  </section>
+
+  <!-- ===================================================== LEGENDAR -->
+  <section class="tab" id="tab-captions" hidden>
+    <div class="card first">
+      <div class="field">
+        <div class="lbl">Animação</div>
+        <div class="actions styles" id="capStyle">
+          <button class="btn secondary stylebtn" data-v="type" title="As letras ou palavras aparecem como numa máquina de escrever">
+            <i class="ico" data-i="StyleType"></i>Máquina de escrever</button>
+          <button class="btn secondary stylebtn" data-v="rise" title="O texto sobe um pouco enquanto aparece">
+            <i class="ico" data-i="StyleRise"></i>Subida com opacidade</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lbl">Ritmo</div>
+        <div class="seg" id="capMode">
+          <button data-v="word"><i class="ico sm" data-i="ModeWord"></i>Palavra por palavra</button>
+          <button data-v="line"><i class="ico sm" data-i="ModeLine"></i>Linha por linha</button>
+        </div>
+        <div class="hint" id="capModeHint"></div>
+      </div>
+      <details class="more" id="moreCap">
+        <summary><span class="chev">▸</span>Mais opções<span class="sum" id="sumCap"></span></summary>
+        <div class="field">
+          <div class="lbl"><i class="ico" data-i="Words"></i>Palavras por linha</div>
+          <div class="row"><input id="cWords" type="range" min="1" max="8"><span class="val" id="cWordsV"></span></div>
+        </div>
+        <div class="field">
+          <div class="lbl">Letras por linha (máximo)</div>
+          <div class="row"><input id="cChars" type="range" min="10" max="42"><span class="val" id="cCharsV"></span></div>
+          <div class="hint">Linhas curtas cabem melhor na área segura do 9:16.</div>
+        </div>
+        <div class="field" id="riseOpts">
+          <div class="lbl"><i class="ico" data-i="StyleRise"></i>Subida</div>
+          <div class="row"><span class="mini">tempo</span><input id="cDur" type="range" min="5" max="60" step="5"><span class="val" id="cDurV"></span></div>
+          <div class="row"><span class="mini">altura</span><input id="cDist" type="range" min="0" max="150" step="5"><span class="val" id="cDistV"></span></div>
+        </div>
+        <label class="check"><input id="cUpper" type="checkbox"><span>Tudo em MAIÚSCULAS</span></label>
+        <label class="check"><input id="cPunct" type="checkbox"><span>Tirar a pontuação</span></label>
+        <label class="check"><input id="cRange" type="checkbox"><span>Usar só o trecho entre o In e o Out (se tiver)</span></label>
+      </details>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="num">1</span><span>Crie as legendas a partir da transcrição.</span></div>
+      <button class="btn full tall" id="capCreate"><i class="ico" data-i="Captions"></i>Criar legendas</button>
+      <div class="step"><span class="num">2</span><span>Selecione as legendas na timeline e converta em gráfico.</span></div>
+      <button class="btn secondary full tall" id="capUpgrade" title="O mesmo que Gráficos e Títulos → Upgrade Caption to Graphic">
+        <i class="ico" data-i="Upgrade"></i>Upgrade para gráfico</button>
+      <div class="step" id="stepAnim"><span class="num">3</span><span id="stepAnimTxt">Selecione os gráficos e anime.</span></div>
+      <button class="btn secondary full tall" id="capAnimate"><i class="ico" data-i="Animate"></i>Animar subida</button>
+    </div>
+  </section>
+
+  <!-- ===================================================== ZOOM -->
+  <section class="tab" id="tab-zoom" hidden>
+    <div class="actions">
+      <button class="btn" id="zoomBtn" title="Dá zoom nos trechos marcados com marcadores de zoom">
+        <i class="ico" data-i="Zoom"></i>Aplicar zoom</button>
+      <button class="btn secondary" id="zoomMark" title="Cria um marcador de zoom do In até o Out da timeline">
+        <i class="ico" data-i="MarkRange"></i>Marcar zoom</button>
+    </div>
+    <div class="card">
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Intensity"></i>Intensidade</div>
+        <div class="row"><input id="zAmount" type="range" min="0" max="50"><span class="val" id="zAmountV"></span></div>
+      </div>
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Ramp"></i>Entrada e saída do zoom</div>
+        <div class="row"><input id="zRamp" type="range" min="1" max="15"><span class="val" id="zRampV"></span></div>
+        <div class="hint">Quanto tempo o zoom leva para entrar e para sair.</div>
+      </div>
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Focus"></i>Foco do zoom</div>
+        <div class="seg text" id="zFocus">
+          <button data-v="0.5">Centro</button>
+          <button data-v="0.35">Rosto (mais alto)</button>
+        </div>
+      </div>
+      <details class="more" id="moreZoom">
+        <summary><span class="chev">▸</span>Mais opções<span class="sum" id="sumZoom"></span></summary>
+        <label class="check"><input id="zForce" type="checkbox"><span>Aplicar de novo nos marcadores que já têm zoom</span></label>
+        <div class="hint">Cada marcador recebe o zoom uma vez só. Para refazer, use Ctrl+Z ou ligue esta opção.</div>
+      </details>
+    </div>
+    <div class="hint pad">Marque os trechos com marcadores com duração na cor do zoom (ou use In/Out + "Marcar zoom"). O zoom vai no clipe de vídeo da trilha mais baixa e funciona por cima do tracking do GTA.</div>
+  </section>
+
+  <!-- ===================================================== RENDER -->
+  <section class="tab" id="tab-render" hidden>
+    <div class="actions">
+      <button class="btn" id="renderBtn" title="Manda cada marcador de corte para a fila do Media Encoder">
+        <i class="ico" data-i="Render"></i>Renderizar cortes</button>
+      <button class="btn secondary" id="renderMark" title="Cria um marcador de corte do In até o Out da timeline">
+        <i class="ico" data-i="MarkRange"></i>Marcar corte</button>
+    </div>
+    <div class="card">
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Preset"></i>Preset</div>
+        <select id="rPreset"></select>
+        <div class="hint" id="rPresetHint"></div>
+      </div>
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Folder"></i>Pasta</div>
+        <div class="pathrow"><span class="path" id="rFolderTxt"></span>
+          <button class="btn secondary small" id="rFolderPick">Trocar</button>
+          <button class="btn secondary small" id="rFolderReset" title="Volta para a pasta Cortes ao lado do projeto">Padrão</button></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Nome dos arquivos</div>
+        <input id="rName" type="text" spellcheck="false">
+        <div class="hint">Use {data}, {n}, {nome} (nome do marcador) e {seq} (nome da sequência). Ex.: <b id="rNameEx"></b></div>
+      </div>
+      <label class="check"><input id="rStart" type="checkbox"><span>Começar a renderizar sozinho no Media Encoder</span></label>
+    </div>
+    <div class="hint pad">Usa os marcadores com duração na cor de corte da sequência aberta, na ordem da timeline.</div>
+  </section>
+
+  <div id="status"></div>
+  <button class="btn green full" id="restart"><i class="ico sm" data-i="Update"></i>Reiniciar o Premiere agora</button>
+  <div class="restart-hint">O Premiere vai fechar (pedindo para salvar, se precisar) e abrir de novo com o mesmo projeto.</div>
+
+  <div class="card" id="queueCard">
+    <div class="qhead">
+      <i class="ico" data-i="Queue"></i><span id="qtitle">Fila</span>
+      <span class="count" id="qcount"></span>
+      <span class="eta" id="eta" hidden><i class="ico" data-i="Time"></i><span id="etaText"></span></span>
+    </div>
+    <div class="bar overall"><div id="overall"></div></div>
+    <div class="qstatus" id="qstatus"></div>
+    <ul id="queueList"></ul>
+    <div class="empty" id="qempty">Nada na fila. O progresso de cada tarefa aparece aqui.</div>
+    <div class="qbtns">
+      <button class="btn secondary full" id="cancel" hidden><i class="ico sm" data-i="CancelQueue"></i>Cancelar</button>
+    </div>
+  </div>
+</main>
+<footer id="footer">CutCake | v1.0.0 | Desenvolvido por Lucas Chedick</footer>
+
+<div class="modal" id="config">
+  <div class="sheet" role="dialog" aria-label="Configurações">
+    <div class="sheet-head">
+      <i class="ico sm" data-i="Config"></i>
+      <h2>Configurações</h2>
+      <button class="close" id="closeConfig" title="Fechar (Esc)">×</button>
+    </div>
+    <div class="sheet-body">
+      <div class="sec">
+        <h3>Transcrição</h3>
+        <div class="notif-status" id="whisperStatus">Verificando…</div>
+        <div class="lbl">Modelo</div>
+        <div class="seg text" id="model">
+          <button data-v="auto">Automático</button>
+          <button data-v="small">Rápido</button>
+          <button data-v="turbo">Preciso</button>
+        </div>
+        <div class="hint" id="modelHint"></div>
+        <label class="switch"><span>Usar a placa de vídeo (NVIDIA)<br><small class="hint">Bem mais rápido. Se não der, o CutCake usa o processador sozinho.</small></span><input type="checkbox" id="optGpu"></label>
+        <button class="btn secondary small full" id="installWhisper" style="margin-top:6px">Instalar transcrição</button>
+      </div>
+
+      <div class="sec">
+        <h3>Marcadores</h3>
+        <div class="lbl"><i class="ico sm" data-i="Marker"></i>Cor dos cortes</div>
+        <div class="swatches" id="colorCut"></div>
+        <div class="lbl" style="margin-top:8px"><i class="ico sm" data-i="Marker"></i>Cor do zoom</div>
+        <div class="swatches" id="colorZoom"></div>
+        <div class="result" id="colorResult"></div>
+      </div>
+
+      <details class="sec fold" id="foldHunt">
+        <summary><h3><span class="chev">▸</span>Caçador</h3></summary>
+        <div class="hint" style="margin-bottom:6px">Uma expressão por linha. Sem acento e maiúsculas também funcionam.</div>
+        <div class="lbl">Chamadas (dão ponto)</div><textarea id="lChamadas" rows="3"></textarea>
+        <div class="lbl">Começo de história (dão ponto)</div><textarea id="lHistorias" rows="3"></textarea>
+        <div class="lbl">Começos fracos (tiram ponto se o corte começar assim)</div><textarea id="lConectivos" rows="2"></textarea>
+        <div class="lbl">Assuntos para evitar (tiram ponto)</div><textarea id="lEvitar" rows="2"></textarea>
+        <button class="btn secondary small" id="resetLists" style="margin-top:6px">Voltar às palavras padrão</button>
+      </details>
+
+      <div class="sec">
+        <h3>Avisos</h3>
+        <label class="switch"><span>Sons</span><input type="checkbox" id="optSounds"></label>
+        <div class="sound-row">
+          <span class="lbl">Volume</span>
+          <input id="vol" type="range" min="0" max="100" step="5"><span class="val" id="volv"></span>
+        </div>
+        <div class="sound-row">
+          <span class="lbl">Testar</span>
+          <button class="play" id="playOk">▶ OK</button>
+          <button class="play" id="playFail">▶ FAIL</button>
+        </div>
+        <div id="notifBox">
+          <label class="switch"><span id="notifLabel">Notificação do Windows ao terminar</span><input type="checkbox" id="optNotify"></label>
+          <label class="switch"><span>Só notificar quando o Premiere não estiver em primeiro plano<br><small class="hint" id="fgHint">Se o Premiere estiver minimizado ou atrás de outra janela, o ícone dele também pisca na barra de tarefas.</small></span><input type="checkbox" id="optFgOnly"></label>
+          <div class="notif-status" id="notifStatus"></div>
+          <button class="btn secondary small" id="testNotify">Testar notificação</button>
+        </div>
+        <label class="switch"><span>Verificar atualizações ao abrir</span><input type="checkbox" id="optAutoUpd"></label>
+      </div>
+
+      <div class="sec">
+        <h3>Interface</h3>
+        <div class="lbl">Tamanho</div>
+        <div class="seg text" id="uiScale">
+          <button data-v="0.85">Pequena</button>
+          <button data-v="1">Média</button>
+          <button data-v="1.15">Grande</button>
+        </div>
+        <div class="lbl" style="margin-top:8px">Abas</div>
+        <label class="switch"><span>Caçar</span><input type="checkbox" data-tabvis="hunt"></label>
+        <label class="switch"><span>Legendar</span><input type="checkbox" data-tabvis="captions"></label>
+        <label class="switch"><span>Zoom</span><input type="checkbox" data-tabvis="zoom"></label>
+        <label class="switch"><span>Render</span><input type="checkbox" data-tabvis="render"></label>
+      </div>
+
+      <details class="sec fold" id="foldPy">
+        <summary><h3><span class="chev">▸</span>Python</h3></summary>
+        <div class="lbl">Comando</div>
+        <div class="inline"><input id="py" type="text"><button class="btn secondary small" id="testPy">Testar Python</button></div>
+        <div class="hint">Windows: "py -3" ou "python". Mac: "python3".</div>
+        <div class="result" id="pyResult"></div>
+      </details>
+
+      <details class="sec fold" id="foldSup">
+        <summary><h3><span class="chev">▸</span>Suporte</h3></summary>
+        <div class="two">
+          <button class="btn secondary small" id="copyDiag">Copiar diagnóstico</button>
+          <button class="btn secondary small" id="resetDefaults">Restaurar padrões</button>
+        </div>
+        <div class="two" style="margin-top:6px">
+          <button class="btn secondary small" id="restartNow">Reiniciar o Premiere</button>
+          <button class="btn secondary small" id="clearCache" title="Apaga as transcrições guardadas (elas são refeitas quando precisar)">Limpar transcrições</button>
+        </div>
+        <div class="result" id="supportResult"></div>
+        <details class="log"><summary><span class="chev">▸</span>Ver log</summary><pre id="log"></pre></details>
+      </details>
+
+      <div class="sec">
+        <h3>Sobre</h3>
+        <div class="about">
+          <b>CutCake</b> <span id="aboutVer"></span><br>
+          Desenvolvido por <b>Lucas Chedick</b><br>
+          <span class="link" id="ghLink">github.com/lchedick/cutcake</span><br>
+          Licença MIT · Transcrição: faster-whisper (MIT) e Whisper (MIT)
+        </div>
+        <button class="btn secondary small" id="aboutNotes" style="margin-top:8px">Ver notas da versão</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="notesModal">
+  <div class="sheet" role="dialog" aria-label="Notas da versão">
+    <div class="sheet-head">
+      <i class="ico sm" data-i="Update"></i>
+      <h2 id="notesTitle">Novidades</h2>
+      <button class="close" id="closeNotes" title="Fechar (Esc)">×</button>
+    </div>
+    <div class="sheet-body"><div class="notes-sub" id="notesDate"></div><div class="notes" id="notesBody"></div></div>
+  </div>
+</div>
+
+<div class="modal" id="askModal">
+  <div class="sheet small" role="dialog" aria-label="Confirmar">
+    <div class="sheet-head">
+      <i class="ico sm" data-i="Fail" style="color:var(--warn)"></i>
+      <h2 id="askTitle"></h2>
+      <button class="close" id="askClose" title="Fechar (Esc)">×</button>
+    </div>
+    <div class="sheet-body"><div class="ask-body" id="askBody"></div><div class="ask-btns" id="askBtns"></div></div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script><script src="js/main.js"></script>
+</body>
+</html>
