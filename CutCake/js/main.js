@@ -288,6 +288,7 @@
     showStatusOf(t);
     renderQueue();
     if (t === "render") refreshRender();
+    if (TRACK_SEL[t]) refreshTracks();
   }
   $("home").addEventListener("click", function (e) { var b = e.target.closest(".hbtn"); if (b) showTab(b.dataset.tab); });
   $("homeBtn").addEventListener("click", function () { if (tab !== "home") showHome(); });
@@ -314,6 +315,52 @@
       applyTabs();
     });
   });
+
+  // ------------------------------------------------------------ trilha de audio (Legendar, Cacar e Takes)
+  // "Automatico" = os clipes selecionados; sem selecao, a trilha de audio mais baixa.
+  // Em qualquer caso o host usa um audio so por trecho (duas trilhas com a mesma fala baguncavam as legendas).
+  var TRACK_SEL = { hunt: "hTrack", captions: "cTrack", takes: "tTrack" }, lastTracks = [], tracksKey = "";
+  function trackVal(k) { return load("trk_" + k, "auto"); }
+  function trackHint(k) {
+    var v = trackVal(k);
+    return v === "auto"
+      ? "Usa os clipes selecionados. Sem seleção, a trilha de áudio mais baixa. Se duas trilhas tiverem a mesma fala, usa só a mais baixa."
+      : "Usa só a trilha " + v + ". Com clipes selecionados, só a parte da seleção.";
+  }
+  function fillTracks() {
+    Object.keys(TRACK_SEL).forEach(function (k) {
+      var el = $(TRACK_SEL[k]), v = trackVal(k);
+      var html = '<option value="auto">Automático (seleção ou trilha mais baixa)</option>';
+      lastTracks.forEach(function (t) {
+        html += '<option value="' + esc(t.key) + '">' + esc(t.key + " · " + t.names[0] + (t.names.length > 1 ? " +" + (t.names.length - 1) : "")) + "</option>";
+      });
+      if (v !== "auto" && !lastTracks.some(function (t) { return t.key === v; })) html += '<option value="' + esc(v) + '">' + esc(v) + " (sem clipes nesta sequência)</option>";
+      if (el.innerHTML !== html) el.innerHTML = html;
+      el.value = v;
+      $(TRACK_SEL[k] + "Hint").textContent = trackHint(k);
+    });
+  }
+  async function refreshTracks() {
+    if (Object.keys(TRACK_SEL).some(function (k) { return document.activeElement === $(TRACK_SEL[k]); })) return;
+    try {
+      var r = await host("cc_audioTracks"), key = JSON.stringify(r.tracks);
+      if (key === tracksKey) return;
+      tracksKey = key; lastTracks = r.tracks;
+    } catch (e) {}
+    fillTracks();
+  }
+  Object.keys(TRACK_SEL).forEach(function (k) {
+    $(TRACK_SEL[k]).addEventListener("change", function () { save("trk_" + k, $(TRACK_SEL[k]).value); fillTracks(); });
+  });
+  function jobsArg(k, range) { return { range: !!range, track: trackVal(k) }; }
+  // conta na fila qual audio foi usado e o que ficou de fora
+  function tracksNote(sel) {
+    var used = [];
+    sel.jobs.forEach(function (j) { var t = j.track ? j.track + " (" + j.name + ")" : j.name; if (used.indexOf(t) < 0) used.push(t); });
+    var txt = "Áudio: " + used.slice(0, 2).join(", ") + (used.length > 2 ? "…" : "");
+    if (sel.dropped && sel.dropped.length) txt += ". Não usei " + sel.dropped.slice(0, 2).join(", ") + (sel.dropped.length > 2 ? "…" : "") + " (toca junto, com a mesma fala)";
+    return txt + ".";
+  }
 
   // ------------------------------------------------------------ cores dos marcadores
   var COLOR_KEYS = { colorCut: "corte", colorZoom: "zoom", colorTake: "take" };
@@ -426,7 +473,7 @@
     $("queueCard").hidden = tab === "home" && !q.items.length;
     $("qtitle").textContent = q.title;
     $("qempty").style.display = q.items.length ? "none" : "";
-    $("qstatus").textContent = q.sub || "";
+    $("qstatus").textContent = q.sub || q.note || "";
     if (ul._tab !== tab) { ul.innerHTML = ""; ul._tab = tab; }
     while (ul.children.length > q.items.length) ul.removeChild(ul.lastChild);
     q.items.forEach(function (it, i) {
@@ -461,7 +508,7 @@
   }
   // "Limpar fila": so tira da tela o que ja terminou
   function clearQueue(k) {
-    Object.assign(Q[k], { items: [], overall: 0, sub: "", eta: "", mission: "", statusMsg: "", statusCls: "", statusBig: false });
+    Object.assign(Q[k], { items: [], overall: 0, sub: "", note: "", eta: "", mission: "", statusMsg: "", statusCls: "", statusBig: false });
     if (k === "render") renderJobs = {};
     if (k === tab) { setStatus(""); renderQueue(); } else updateHome();
   }
@@ -490,6 +537,7 @@
   var pruning = false;
   async function pruneQueues() {
     if (pruning || busyEngine || renderRun || document.hidden) return;
+    if (TRACK_SEL[tab]) refreshTracks();
     var ask = {};
     Object.keys(Q).forEach(function (k) {
       var q = Q[k];
@@ -652,14 +700,14 @@
   function jobItems(sel, prefix) {
     var tot = sel.jobs.reduce(function (s, j) { return s + Math.max(0.1, j.out - j.in); }, 0), acc = 0;
     return sel.jobs.map(function (j) {
-      var w = Math.max(0.1, j.out - j.in) / tot * 0.95, it = { name: prefix + j.name, state: "queued", progress: 0, w0: acc * 0.95 / tot, w: w, msg: "" };
+      var w = Math.max(0.1, j.out - j.in) / tot * 0.95, it = { name: prefix + j.name + (j.track ? " (" + j.track + ")" : ""), state: "queued", progress: 0, w0: acc * 0.95 / tot, w: w, msg: "" };
       if (j.nodeId) it.nodeIds = [j.nodeId];
       acc += Math.max(0.1, j.out - j.in);
       return it;
     });
   }
   function startQueue(k, title, items, sequenceId) {
-    Object.assign(Q[k], { title: title, items: items, active: true, cancelable: true, overall: 0, eta: "", sub: "", sequenceId: sequenceId, mission: "" });
+    Object.assign(Q[k], { title: title, items: items, active: true, cancelable: true, overall: 0, eta: "", sub: "", note: "", sequenceId: sequenceId, mission: "" });
     cancelled = false;
     setBusy(true, k);
     taskbar.start();
@@ -791,10 +839,11 @@
     var after = linesOf("tAfter"), before = linesOf("tBefore");
     if (!after.length && !before.length) { qStatus("takes", "Nenhum gatilho configurado. Veja em Configurações → Takes.", "err"); return; }
     var sel;
-    try { sel = await host("cc_getJobs", false); }
+    try { sel = await host("cc_getJobs", jobsArg("takes", false)); }
     catch (e) { qStatus("takes", e.message, "err"); return; }
     var t0 = Date.now();
     startQueue("takes", "Takes", jobItems(sel, "Transcrever: "), sel.sequenceId);
+    Q.takes.note = tracksNote(sel);
     var task = baseTask("takes", sel), pad = Number($("tPad").value) / 10;
     task.takes = { pause: Number($("tPause").value) / 10, silence: Number($("tSil").value) / 10, pad_in: pad, pad_out: pad,
                    after: after, before: before };
@@ -861,7 +910,7 @@
         return { name: (t.name || "Take") + " → " + fmtClock(t.at), state: okT ? "ok" : "fail", st: Math.round(t.end - t.start) + "s", t: t.at,
                  msg: "Do trecho " + fmtClock(t.start) + " – " + fmtClock(t.end) + " · " + plural(t.clips, "clipe", "clipes") + (okT ? "" : " · algum clipe não foi colado") };
       });
-      qSet("takes", { items: items, title: "Montagem", overall: 1, sequenceId: r.sequenceId,
+      qSet("takes", { items: items, title: "Montagem", overall: 1, sequenceId: r.sequenceId, note: "",
                       sub: "Começa em " + fmtClock(r.start) + ", 1 minuto depois do último clipe. O original continua no lugar." });
       if (r.fails.length) {
         qStatus("takes", "Montei, mas não consegui colar: " + r.fails.slice(0, 3).join("; ") + (r.fails.length > 3 ? "…" : "") + ". Confira na timeline.", "err", true);
@@ -880,11 +929,11 @@
     if (busyEngine) return;
     $("log").textContent = ""; qStatus("hunt", "");
     var sel;
-    try { sel = await host("cc_getJobs", $("hRange").checked); }
+    try { sel = await host("cc_getJobs", jobsArg("hunt", $("hRange").checked)); }
     catch (e) { qStatus("hunt", e.message, "err"); return; }
     var t0 = Date.now();
     startQueue("hunt", "Caçador", jobItems(sel, "Transcrever: "), sel.sequenceId);
-    if (sel.range) Q.hunt.sub = "Só entre o In e o Out (" + fmtClock(sel.range[0]) + " – " + fmtClock(sel.range[1]) + ")";
+    Q.hunt.note = (sel.range ? "Só entre o In e o Out (" + fmtClock(sel.range[0]) + " – " + fmtClock(sel.range[1]) + "). " : "") + tracksNote(sel);
     var task = baseTask("hunt", sel);
     task.hunt = { count: Number($("hCount").value), min: Number($("hMin").value), max: Number($("hMax").value), lists: getLists() };
     try {
@@ -935,10 +984,11 @@
     if (busyEngine) return;
     $("log").textContent = ""; qStatus("captions", "");
     var sel;
-    try { sel = await host("cc_getJobs", $("cRange").checked); }
+    try { sel = await host("cc_getJobs", jobsArg("captions", $("cRange").checked)); }
     catch (e) { qStatus("captions", e.message, "err"); return; }
     var t0 = Date.now();
     startQueue("captions", "Legendas", jobItems(sel, "Transcrever: "), sel.sequenceId);
+    Q.captions.note = tracksNote(sel);
     var dir = path.join(DATA, "legendas");
     try { fs.mkdirSync(dir, { recursive: true }); } catch (e0) {}
     var d = new Date(), stamp = d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2) + "-" +
@@ -969,9 +1019,18 @@
     }
   });
 
-  // "Upgrade Caption to Graphic": o painel aciona o mesmo item do menu do Premiere
+  // "Upgrade Caption to Graphic": o painel aciona o mesmo item do menu do Premiere.
+  // Os comandos do menu agem sobre o painel que esta com o foco. Quando o clique vem do CutCake,
+  // o foco esta no CutCake, e o comando nao achava as legendas selecionadas (v1.0.2: "OK", mas
+  // nada mudava). Por isso, antes do comando, o foco vai para a timeline:
+  // menu Janela > Linhas do tempo > <sequencia> (ou o atalho Shift+3, se o menu nao aparecer).
+  // Depois o painel confere se apareceram graficos novos na timeline.
   var MENU_RE = "upgrade.*caption.*graphic|caption.*to.*graphic|legenda.*para.*gr[aá]fico|legenda.*em.*gr[aá]fico";
-  function upgradeScriptWin() {
+  function reEsc(t) { return String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  function focusRe(seqName) {
+    return seqName ? "^(window|janela) > (timelines?|linhas do tempo|linha do tempo|sequ[eê]ncias?) > " + reEsc(seqName) + "$" : "";
+  }
+  function upgradeScriptWin(seqName) {
     return [
       "Add-Type -TypeDefinition @'",
       "using System; using System.Text; using System.Runtime.InteropServices; using System.Text.RegularExpressions;",
@@ -984,36 +1043,64 @@
       " [DllImport(\"user32.dll\")] static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);",
       " [DllImport(\"user32.dll\")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);",
       " [DllImport(\"user32.dll\")] static extern bool SetForegroundWindow(IntPtr h);",
+      " [DllImport(\"user32.dll\")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);",
       " static uint found; static string where;",
-      " static void Walk(IntPtr h, IntPtr m, Regex re, string path, int depth) {",
+      " static void Walk(IntPtr h, IntPtr m, Regex re, bool full, string path, int depth) {",
       "  int n = GetMenuItemCount(m);",
       "  for (int i = 0; i < n && found == 0; i++) {",
       "   StringBuilder sb = new StringBuilder(256); GetMenuString(m, (uint)i, sb, 256, 0x400);",
-      "   string t = sb.ToString().Replace(\"&\", \"\");",
+      "   string t = sb.ToString().Replace(\"&\", \"\"); int tab = t.IndexOf('\\t'); if (tab >= 0) t = t.Substring(0, tab);",
       "   IntPtr sub = GetSubMenu(m, i);",
-      "   if (sub != IntPtr.Zero) { if (depth < 4) { SendMessage(h, 0x0117, sub, (IntPtr)i); Walk(h, sub, re, path + t + \" > \", depth + 1); } }",
-      "   else if (re.IsMatch(t)) { found = GetMenuItemID(m, i); where = path + t; }",
+      "   if (sub != IntPtr.Zero) { if (depth < 4) { SendMessage(h, 0x0117, sub, (IntPtr)i); Walk(h, sub, re, full, path + t + \" > \", depth + 1); } }",
+      "   else if (re.IsMatch(full ? path + t : t)) { found = GetMenuItemID(m, i); where = path + t; }",
       "  }",
       " }",
-      " public static string Run(IntPtr h, string pattern) {",
-      "  IntPtr m = GetMenu(h); if (m == IntPtr.Zero) return \"NOMENU\";",
-      "  found = 0; where = \"\"; Walk(h, m, new Regex(pattern, RegexOptions.IgnoreCase), \"\", 0);",
-      "  if (found == 0 || found == 0xFFFFFFFF) return \"NOTFOUND\";",
-      "  SetForegroundWindow(h); PostMessage(h, 0x0111, (IntPtr)found, IntPtr.Zero); return \"OK|\" + where;",
+      " static uint Find(IntPtr h, string pattern, bool full) {",
+      "  IntPtr m = GetMenu(h); if (m == IntPtr.Zero || pattern.Length == 0) return 0;",
+      "  found = 0; where = \"\"; Walk(h, m, new Regex(pattern, RegexOptions.IgnoreCase), full, \"\", 0);",
+      "  return found == 0xFFFFFFFF ? 0 : found;",
+      " }",
+      " public static string Run(IntPtr h, string upPattern, string focusPattern) {",
+      "  if (GetMenu(h) == IntPtr.Zero) return \"NOMENU\";",
+      "  uint up = Find(h, upPattern, false); string upWhere = where;",
+      "  if (up == 0) return \"NOTFOUND\";",
+      "  uint fo = Find(h, focusPattern, true); string foWhere = where;",
+      "  SetForegroundWindow(h); System.Threading.Thread.Sleep(150);",
+      "  string how;",
+      "  if (fo != 0) { SendMessage(h, 0x0111, (IntPtr)fo, IntPtr.Zero); how = \"foco pelo menu \" + foWhere; }",
+      "  else { keybd_event(0x10, 0, 0, UIntPtr.Zero); keybd_event(0x33, 0, 0, UIntPtr.Zero); keybd_event(0x33, 0, 2, UIntPtr.Zero); keybd_event(0x10, 0, 2, UIntPtr.Zero); how = \"foco pelo Shift+3\"; }",
+      "  System.Threading.Thread.Sleep(450);",
+      "  PostMessage(h, 0x0111, (IntPtr)up, IntPtr.Zero);",
+      "  return \"OK|\" + how + \"|\" + upWhere;",
       " }",
       "}",
       "'@",
       "$p = Get-Process -Name 'Adobe Premiere Pro' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1",
       "if (-not $p) { 'NOPREMIERE'; exit }",
-      "[CCMenu]::Run($p.MainWindowHandle, " + psStr(MENU_RE) + ")"
+      "[CCMenu]::Run($p.MainWindowHandle, " + psStr(MENU_RE) + ", " + psStr(focusRe(seqName)) + ")"
     ].join("\n");
   }
-  function upgradeScriptMac() {
+  function asStr(t) { return '"' + String(t).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
+  function upgradeScriptMac(seqName) {
     return [
       'tell application "System Events"',
       '  set pp to first application process whose name contains "Premiere Pro"',
       '  set frontmost of pp to true',
+      '  delay 0.2',
       '  tell pp',
+      // foco na timeline: Window > Timelines > <sequencia>
+      '    set focused to false',
+      '    repeat with wn in {"Window", "Janela"}',
+      '      repeat with tn in {"Timelines", "Linhas do tempo"}',
+      '        try',
+      '          click menu item ' + asStr(seqName || "") + ' of menu 1 of menu item (tn as text) of menu 1 of menu bar item (wn as text) of menu bar 1',
+      '          set focused to true',
+      '        end try',
+      '        if focused then exit repeat',
+      '      end repeat',
+      '      if focused then exit repeat',
+      '    end repeat',
+      '    delay 0.4',
       '    repeat with mb in menu bar items of menu bar 1',
       '      try',
       '        repeat with mi in menu items of menu 1 of mb',
@@ -1022,7 +1109,7 @@
       '            if n is not missing value then',
       '              if (n contains "Upgrade Caption") or ((n contains "egenda") and (n contains "gráfico")) then',
       '                click mi',
-      '                return "OK|" & n',
+      '                return "OK|foco " & focused & "|" & n',
       '              end if',
       '            end if',
       '          end try',
@@ -1034,22 +1121,38 @@
       'return "NOTFOUND"'
     ].join("\n");
   }
-  var MANUAL_UPGRADE = "Faça pelo menu: Gráficos e Títulos → Upgrade Caption to Graphic (com as legendas selecionadas).";
+  var MANUAL_UPGRADE = "Faça à mão: na timeline, clique na primeira legenda e Shift+clique na última, e vá no menu Gráficos e Títulos → Upgrade Caption to Graphic (em português: Atualizar legenda para gráfico).";
   $("capUpgrade").addEventListener("click", async function () {
     $("capUpgrade").disabled = true;
     qStatus("captions", "Convertendo as legendas selecionadas…");
     try {
-      var out = IS_WIN ? await psRun(upgradeScriptWin()) : IS_MAC ? await exec("osascript", ["-e", upgradeScriptMac()]) : "NOMENU";
+      var info = await loadProjInfo(), before = null;
+      try { before = await host("cc_graphicsCount"); } catch (e0) {}
+      var out = IS_WIN ? await psRun(upgradeScriptWin(info.seqName)) : IS_MAC ? await exec("osascript", ["-e", upgradeScriptMac(info.seqName)]) : "NOMENU";
       out = String(out).trim().split(/\r?\n/).pop();
       addLog("upgrade: " + out + "\n");
-      if (/^OK/.test(out)) qStatus("captions", "Pronto! Se nada mudou, confira se as legendas estavam selecionadas na timeline.", "ok", true);
-      else if (out === "NOPREMIERE") qStatus("captions", "Não encontrei a janela do Premiere. " + MANUAL_UPGRADE, "err");
-      else qStatus("captions", "Não consegui acionar o menu sozinho. " + MANUAL_UPGRADE, "err");
+      if (/^OK/.test(out)) {
+        // confere se apareceram graficos novos (a conversao pode levar alguns segundos)
+        var made = -1;
+        if (before) {
+          for (var w = 0; w < 8 && made <= 0; w++) {
+            await sleep(700);
+            try { made = (await host("cc_graphicsCount")).count - before.count; } catch (e1) { made = -1; break; }
+          }
+        }
+        if (made > 0) {
+          qMission("captions", plural(made, "legenda virou gráfico", "legendas viraram gráfico"), "", segVal("capStyle") === "rise" ? "agora selecione e anime" : "");
+          play("Alert_OK.mp3");
+        } else if (made === 0) qStatus("captions", "Mandei o comando, mas as legendas não viraram gráfico. " + MANUAL_UPGRADE, "err", true);
+        else qStatus("captions", "Mandei o comando. Se as legendas não viraram gráfico, " + MANUAL_UPGRADE.charAt(0).toLowerCase() + MANUAL_UPGRADE.slice(1), "ok", true);
+      }
+      else if (out === "NOPREMIERE") qStatus("captions", "Não encontrei a janela do Premiere. " + MANUAL_UPGRADE, "err", true);
+      else qStatus("captions", "Não achei o comando no menu do Premiere. " + MANUAL_UPGRADE, "err", true);
     } catch (e) {
       addLog("upgrade: " + e.message + "\n");
       var acc = IS_MAC && /not allowed|assistive|1002|-1719|-25211/i.test(e.message);
       qStatus("captions", acc ? "O Mac precisa liberar o Premiere em Ajustes do Sistema → Privacidade e Segurança → Acessibilidade. " + MANUAL_UPGRADE
-                              : "Não consegui acionar o menu sozinho. " + MANUAL_UPGRADE, "err");
+                              : "Não consegui acionar o menu sozinho. " + MANUAL_UPGRADE, "err", true);
     }
     $("capUpgrade").disabled = busyEngine;
   });
@@ -1085,7 +1188,7 @@
   async function markRange(k, color, label) {
     try {
       var r = await host("cc_markRange", { color: color, name: label + " {n}", comment: "" });
-      qStatus(k, "Marcador \"" + r.name + "\" criado (" + fmtClock(r.start) + " – " + fmtClock(r.end) + ").", "ok");
+      qStatus(k, "Marcador \"" + r.name + "\" criado (" + fmtClock(r.start) + " – " + fmtClock(r.end) + (r.from === "inout" ? ", do In ao Out" : ", dos clipes selecionados") + ").", "ok");
     } catch (e) { qStatus(k, e.message, "err"); }
   }
   $("zoomMark").addEventListener("click", function () { markRange("zoom", colorZoom(), "Zoom"); });
@@ -1444,6 +1547,7 @@
       "Ajustes: modelo=" + segVal("model") + " gpu=" + $("optGpu").checked + " cortes=" + $("hCount").value + " dur=" + $("hMin").value + "-" + $("hMax").value +
         " legenda=" + segVal("capStyle") + "/" + segVal("capMode") + "/" + $("cWords").value + " zoom=" + $("zAmount").value + "%/" + $("zRamp").value +
         " foco=" + segVal("zFocus") + " cores=" + colorCut() + "/" + colorZoom() + "/" + colorTake() + " preset=" + $("rPreset").value,
+      "Áudio: caçar=" + trackVal("hunt") + " legendar=" + trackVal("captions") + " takes=" + trackVal("takes"),
       "Takes: pausa=" + $("tPause").value / 10 + " silêncio=" + $("tSil").value / 10 + " folga=" + $("tPad").value / 10 + " usa=" + segVal("tUse") +
         " depois=" + linesOf("tAfter").join("/") + " antes=" + (linesOf("tBefore").join("/") || "-"),
       "", "Último Caçador:", Q.hunt.lastSummary || "(nenhum)",

@@ -390,7 +390,12 @@
         <i class="ico" data-i="Montage"></i>Montagem</button>
     </div>
     <div class="card">
-      <details class="more" id="moreTakes" style="margin-top:0;border-top:0;padding-top:0">
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Audio"></i>Áudio</div>
+        <select id="tTrack"></select>
+        <div class="hint" id="tTrackHint"></div>
+      </div>
+      <details class="more" id="moreTakes">
         <summary><span class="chev">▸</span>Mais opções<span class="sum" id="sumTakes"></span></summary>
         <div class="field">
           <div class="lbl"><i class="ico" data-i="Pause"></i>Pausa entre um take e outro</div>
@@ -425,6 +430,11 @@
     </div>
     <div class="card">
       <div class="field">
+        <div class="lbl"><i class="ico" data-i="Audio"></i>Áudio</div>
+        <select id="hTrack"></select>
+        <div class="hint" id="hTrackHint"></div>
+      </div>
+      <div class="field">
         <div class="lbl"><i class="ico" data-i="Count"></i>Quantidade de cortes</div>
         <div class="row"><input id="hCount" type="range" min="1" max="15"><span class="val" id="hCountV"></span></div>
       </div>
@@ -446,6 +456,11 @@
   <!-- ===================================================== LEGENDAR -->
   <section class="tab" id="tab-captions" hidden>
     <div class="card first">
+      <div class="field">
+        <div class="lbl"><i class="ico" data-i="Audio"></i>Áudio</div>
+        <select id="cTrack"></select>
+        <div class="hint" id="cTrackHint"></div>
+      </div>
       <div class="field">
         <div class="lbl">Animação</div>
         <div class="actions styles" id="capStyle">
@@ -501,7 +516,7 @@
     <div class="actions">
       <button class="btn" id="zoomBtn" title="Dá zoom nos trechos marcados com marcadores de zoom">
         <i class="ico" data-i="Zoom"></i>Aplicar zoom</button>
-      <button class="btn secondary" id="zoomMark" title="Cria um marcador de zoom do In até o Out da timeline">
+      <button class="btn secondary" id="zoomMark" title="Cria um marcador de zoom nos clipes selecionados (sem seleção: do In até o Out)">
         <i class="ico" data-i="MarkRange"></i>Marcar zoom</button>
     </div>
     <div class="card">
@@ -527,7 +542,7 @@
         <div class="hint">Cada marcador recebe o zoom uma vez só. Para refazer, use Ctrl+Z ou ligue esta opção.</div>
       </details>
     </div>
-    <div class="hint pad">Marque os trechos com marcadores com duração na cor do zoom (ou use In/Out + "Marcar zoom"). O zoom vai no clipe de vídeo da trilha mais baixa e funciona por cima do tracking do GTA.</div>
+    <div class="hint pad">Marque os trechos com marcadores com duração na cor do zoom, ou selecione os clipes e clique em "Marcar zoom" (vários clipes viram um marcador só; sem seleção, usa o In e o Out). O zoom vai no clipe de vídeo da trilha mais baixa e funciona por cima do tracking do GTA.</div>
   </section>
 
   <!-- ===================================================== RENDER -->
@@ -535,7 +550,7 @@
     <div class="actions">
       <button class="btn" id="renderBtn" title="Manda cada marcador de corte para a fila do Media Encoder">
         <i class="ico" data-i="Render"></i>Renderizar cortes</button>
-      <button class="btn secondary" id="renderMark" title="Cria um marcador de corte do In até o Out da timeline">
+      <button class="btn secondary" id="renderMark" title="Cria um marcador de corte nos clipes selecionados (sem seleção: do In até o Out)">
         <i class="ico" data-i="MarkRange"></i>Marcar corte</button>
     </div>
     <div class="card">
@@ -557,7 +572,7 @@
       </div>
       <label class="check"><input id="rStart" type="checkbox"><span>Começar a renderizar sozinho no Media Encoder</span></label>
     </div>
-    <div class="hint pad">Usa os marcadores com duração na cor de corte da sequência aberta, na ordem da timeline.</div>
+    <div class="hint pad">Usa os marcadores com duração na cor de corte da sequência aberta, na ordem da timeline. "Marcar corte" cria um marcador nos clipes selecionados (vários clipes viram um marcador só; sem seleção, usa o In e o Out).</div>
   </section>
 
 
@@ -577,7 +592,7 @@
     </div>
   </div>
 </main>
-<footer id="footer">CutCake | v1.0.3 | Desenvolvido por Lucas Chedick</footer>
+<footer id="footer">CutCake | v1.0.4 | Desenvolvido por Lucas Chedick</footer>
 
 <div class="modal" id="config">
   <div class="sheet" role="dialog" aria-label="Configurações">

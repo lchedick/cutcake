@@ -80,18 +80,37 @@ function cc_speed(item) {
 function cc_tracks(seq, kind) { return kind === "audio" ? seq.audioTracks : seq.videoTracks; }
 
 // ------------------------------------------------------------ clipes para transcrever
-// Usa os clipes selecionados (video ou audio). Sem selecao: a primeira trilha de audio com clipes.
-function cc_getJobs(useRange) {
+// arg = { range: bool, track: "auto" | "A1" | "A2"... } (ou so o bool do range, como antes)
+// - trilha escolhida: os clipes dessa trilha de audio (so na parte selecionada, se houver selecao);
+// - automatico: os clipes selecionados; sem selecao, a trilha de audio mais baixa com clipes.
+// Sempre um audio por trecho: se dois clipes tocam ao mesmo tempo (ex.: mesa e camera com a
+// mesma fala), fica o da trilha de audio mais baixa. Misturar os dois baguncava as legendas.
+function cc_overlap(a, b) { return Math.min(a[1], b[1]) - Math.max(a[0], b[0]); }
+function cc_getJobs(arg) {
     try {
+        var opts = (arg && typeof arg === "object") ? arg : { range: !!arg };
         var seq = app.project.activeSequence;
         if (!seq) return cc_err("Abra uma sequência na timeline.");
-        var range = useRange ? cc_seqRange(seq) : null;
-        var items = [], skipped = [], i, j, from = "seleção";
-        var sel = seq.getSelection();
-        for (i = 0; i < sel.length; i++) {
-            if (sel[i].mediaType === "Video" || sel[i].mediaType === "Audio") items.push(sel[i]);
-        }
-        if (!items.length) {
+        var range = opts.range ? cc_seqRange(seq) : null;
+        var map = cc_trackMap(seq), items = [], skipped = [], dropped = [], i, j, from = "seleção";
+        var sel = seq.getSelection(), picked = [];
+        for (i = 0; i < sel.length; i++) if (sel[i].mediaType === "Video" || sel[i].mediaType === "Audio") picked.push(sel[i]);
+        var track = String(opts.track || "auto");
+        if (track !== "auto") {
+            var ti = parseInt(track.replace(/^A/i, ""), 10) - 1, tr = seq.audioTracks[ti];
+            if (!(ti >= 0) || !tr) return cc_err("A trilha " + track + " não existe nesta sequência. Escolha outra no campo Áudio.");
+            var span = cc_selRange(seq);
+            for (j = 0; j < tr.clips.numItems; j++) {
+                var c = tr.clips[j];
+                if (!cc_mediaPath(c)) continue;
+                if (span && cc_overlap(span, [cc_sec(c.start), cc_sec(c.end)]) <= 0.05) continue;
+                items.push(c);
+            }
+            from = track;
+            if (!items.length) return cc_err("A trilha " + track + " não tem clipes com áudio" + (span ? " na parte selecionada" : "") + ".");
+        } else if (picked.length) {
+            items = picked;
+        } else {
             var kinds = ["audio", "video"];
             for (var k = 0; k < kinds.length && !items.length; k++) {
                 var trs = cc_tracks(seq, kinds[k]);
@@ -104,24 +123,52 @@ function cc_getJobs(useRange) {
             }
         }
         if (!items.length) return cc_err("Não achei clipes com áudio nesta sequência.");
-        var seen = {}, jobs = [];
+        // prioridade: audio antes de video, trilha mais baixa primeiro
+        var prio = function (it) { var f = map[it.nodeId]; if (!f) return 500; return (f.type === "Audio" ? 0 : 100) + f.track; };
+        items.sort(function (a, b) { return prio(a) - prio(b) || cc_sec(a.start) - cc_sec(b.start); });
+        var kept = [], jobs = [], used = {};
         for (i = 0; i < items.length; i++) {
             var it = items[i], media = cc_mediaPath(it);
             if (!media) { skipped.push(it.name); continue; }
             var st = cc_sec(it.start), en = cc_sec(it.end);
             if (range && (en <= range[0] || st >= range[1])) continue;
-            var key = media + "|" + Math.round(st * 100);
-            if (seen[key]) continue;
-            seen[key] = true;
+            var clash = null;
+            for (j = 0; j < kept.length; j++) if (cc_overlap(kept[j].r, [st, en]) > 0.5) { clash = kept[j]; break; }
+            if (clash) {
+                if (clash.media !== media && !used[it.name]) { dropped.push(it.name); used[it.name] = true; }
+                continue;
+            }
             try { if (it.isSpeedReversed && it.isSpeedReversed()) { skipped.push(it.name + " (invertido)"); continue; } } catch (eR) {}
+            kept.push({ r: [st, en], media: media });
+            var inf = map[it.nodeId];
             jobs.push({ media: media, "in": cc_round(cc_sec(it.inPoint)), out: cc_round(cc_sec(it.outPoint)),
-                        seq_start: cc_round(st), seq_end: cc_round(en), speed: cc_speed(it), name: it.name, nodeId: it.nodeId });
+                        seq_start: cc_round(st), seq_end: cc_round(en), speed: cc_speed(it), name: it.name, nodeId: it.nodeId,
+                        track: inf ? (inf.type === "Audio" ? "A" : "V") + (inf.track + 1) : "" });
         }
         if (!jobs.length) return cc_err(range ? "Nenhum clipe com áudio entre o In e o Out." : "Nenhum clipe com arquivo de mídia.");
         jobs.sort(function (a, b) { return a.seq_start - b.seq_start; });
-        return cc_str({ sequenceId: seq.sequenceID, seqName: seq.name, range: range, jobs: jobs, skipped: skipped,
+        return cc_str({ sequenceId: seq.sequenceID, seqName: seq.name, range: range, jobs: jobs, skipped: skipped, dropped: dropped,
                         from: from, seqW: Number(seq.frameSizeHorizontal), seqH: Number(seq.frameSizeVertical) });
     } catch (e) { return cc_err("Erro ao ler a sequência: " + e.toString()); }
+}
+
+// trilhas de audio com clipes (para o campo "Audio" de Legendar, Cacar e Takes)
+function cc_audioTracks() {
+    try {
+        var seq = app.project.activeSequence;
+        if (!seq) return cc_str({ sequenceId: "", tracks: [] });
+        var out = [];
+        for (var i = 0; i < seq.audioTracks.numTracks; i++) {
+            var tr = seq.audioTracks[i], names = [], seen = {};
+            for (var j = 0; j < tr.clips.numItems; j++) {
+                var c = tr.clips[j];
+                if (!cc_mediaPath(c) || seen[c.name]) continue;
+                seen[c.name] = true; names.push(c.name);
+            }
+            if (names.length) out.push({ key: "A" + (i + 1), names: names });
+        }
+        return cc_str({ sequenceId: seq.sequenceID, tracks: out });
+    } catch (e) { return cc_err(e.toString()); }
 }
 
 // ------------------------------------------------------------ marcadores
@@ -203,13 +250,27 @@ function cc_getMarkers(d) {
     } catch (e) { return cc_err("Erro ao ler marcadores: " + e.toString()); }
 }
 
-// cria um marcador com duracao do In ate o Out da sequencia
+// cria um marcador com duracao: dos clipes selecionados (do comeco do primeiro ao fim do
+// ultimo, um marcador so) ou, sem selecao, do In ate o Out da sequencia
+function cc_selRange(seq) {
+    var sel = seq.getSelection(), a = null, b = null;
+    for (var i = 0; i < sel.length; i++) {
+        var it = sel[i];
+        if (it.mediaType !== "Video" && it.mediaType !== "Audio") continue;
+        var s = cc_sec(it.start), e = cc_sec(it.end);
+        if (!(e > s)) continue;
+        if (a === null || s < a) a = s;
+        if (b === null || e > b) b = e;
+    }
+    return a === null || b - a < 0.05 ? null : [cc_round(a), cc_round(b)];
+}
 function cc_markRange(d) {
     try {
         var seq = app.project.activeSequence;
         if (!seq) return cc_err("Abra uma sequência na timeline.");
-        var r = cc_seqRange(seq);
-        if (!r) return cc_err("Marque o In (I) e o Out (O) na timeline primeiro.");
+        var r = cc_selRange(seq), from = "seleção";
+        if (!r) { r = cc_seqRange(seq); from = "inout"; }
+        if (!r) return cc_err("Selecione os clipes na timeline (ou marque o In e o Out) primeiro.");
         var count = 1, all = cc_markerArray(seq);
         for (var i = 0; i < all.length; i++) if (cc_color(all[i]) === d.color && cc_sec(all[i].end) - cc_sec(all[i].start) > 0.05) count++;
         var name = String(d.name || "").replace("{n}", String(count));
@@ -218,7 +279,7 @@ function cc_markRange(d) {
         m.comments = d.comment || "";
         cc_setEnd(m, r[1]);
         cc_setColor(m, d.color);
-        return cc_str({ ok: true, start: r[0], end: r[1], name: name });
+        return cc_str({ ok: true, start: r[0], end: r[1], name: name, from: from });
     } catch (e) { return cc_err("Erro ao criar o marcador: " + e.toString()); }
 }
 
@@ -715,6 +776,21 @@ function cc_takesMontage(d) {
         return cc_str({ ok: !fails.length, start: pos0, end: cc_round(pos), takes: takes, placed: placed, total: order.length,
                         fails: fails, skipped: skipped, sequenceId: seq.sequenceID });
     } catch (e) { return cc_err("Erro ao montar os takes: " + e.toString()); }
+}
+
+// ------------------------------------------------------------ legendas: conferir o Upgrade para grafico
+// quantos clipes de video sem arquivo de midia (graficos, titulos) a sequencia tem
+function cc_graphicsCount() {
+    try {
+        var seq = app.project.activeSequence;
+        if (!seq) return cc_str({ count: 0 });
+        var n = 0;
+        for (var i = 0; i < seq.videoTracks.numTracks; i++) {
+            var tr = seq.videoTracks[i];
+            for (var j = 0; j < tr.clips.numItems; j++) if (!cc_mediaPath(tr.clips[j])) n++;
+        }
+        return cc_str({ count: n });
+    } catch (e) { return cc_err(e.toString()); }
 }
 
 // ------------------------------------------------------------ fila: o que ainda existe

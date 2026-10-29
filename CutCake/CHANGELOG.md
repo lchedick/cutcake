@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.0.4 — outubro de 2026
+
+**Nesta versão**
+
+- **Correção das legendas bagunçadas**: quando dois áudios tinham a mesma fala (ex.: a mesa e a câmera), o CutCake transcrevia os dois e misturava as palavras. Saíam legendas em dobro e linhas bagunçadas. Agora:
+  - cada trecho usa um áudio só (o da trilha mais baixa), e a fila mostra qual foi usado e qual ficou de fora;
+  - se alguma palavra vier repetida de dois áudios, ela entra uma vez só;
+  - uma legenda nunca fica por cima da outra, e cada uma tem uma linha só.
+- **Campo "Áudio" em Legendar, Caçar e Takes**: escolha a trilha de áudio (A1, A2...) ou deixe no Automático, que usa os clipes selecionados ou, sem seleção, a trilha de áudio mais baixa. A escolha fica salva.
+- **Upgrade para gráfico** tenta de novo de outro jeito: antes do comando, o CutCake põe o foco na timeline (o comando não achava as legendas porque o foco estava no painel). Depois ele confere se as legendas viraram gráfico e avisa se não viraram, com o passo a passo para fazer à mão.
+- **"Marcar zoom" e "Marcar corte" pelos clipes selecionados**: selecione um ou mais clipes e clique. Vários clipes viram um marcador só, do começo do primeiro ao fim do último. Sem nada selecionado, o botão continua usando o In e o Out.
+
+**O que o CutCake faz**
+
+- **Sincronizar**: procura alguns trechos curtos de cada clipe no áudio da referência e faz o ajuste fino, com precisão menor que 1 quadro. Se os microfones forem muito diferentes, compara pela fala. Cada vídeo anda junto com o seu áudio, e o clipe só é movido quando o selo é bom.
+- **Takes**: acha o take bom dos avisos pelo gatilho falado, marca na timeline e monta os takes um em seguida do outro.
+- **Caçar**: transcreve a pregação no próprio computador (Whisper, sem internet) e marca os trechos com mais cara de corte como marcadores com duração, com nota de 0 a 100% e o motivo (pergunta, voz forte, história...).
+- **Legendar**: cria as legendas a partir da transcrição, com um áudio só (você escolhe a trilha), em **máquina de escrever** ou **subida com opacidade**, palavra por palavra ou linha por linha. Tem os botões **Upgrade para gráfico** e **Animar subida**.
+- **Zoom**: zoom suave nos trechos com marcadores de zoom (marque pelos clipes selecionados ou pelo In/Out), por cima do tracking do GTA, com intensidade, rampa e foco ajustáveis.
+- **Render**: manda cada marcador de corte para a fila do Media Encoder, com o preset, a pasta e o nome escolhidos (ex.: `18.10 - corte 3`), e avisa se o arquivo já existir.
+- **Fila com progresso**, tempo estimado, sons, notificação ao terminar e barra no ícone do Premiere (Windows).
+- **Configurações**: modelo da transcrição, placa de vídeo, cores dos marcadores, palavras do Caçador, gatilhos dos Takes, funções visíveis, tamanho da interface e suporte.
+
 ## v1.0.3 — outubro de 2026
 
 **Nesta versão**

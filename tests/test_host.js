@@ -145,4 +145,36 @@ function takeSeq(){
   const a=JSON.parse(ctx.cc_addMarkers({sequenceId:"seq1", color:6, items:[{start:1,end:2,name:"x",comment:""}]}));
   ok(a.guids.length===1 && a.guids[0]===T.seq.markers.list[0].guid, "addMarkers devolve o guid");
 }
+// ---- 10. um áudio por trecho e escolha da trilha
+{
+  const mesa=new M.Clip({name:"mesa.mp3", mediaType:"Audio", start:0, end:300, inPoint:0, media:"C:/mesa.mp3", selected:true});
+  const camV=new M.Clip({name:"Clip0001.MXF", start:2, end:302, inPoint:0, media:"C:/Clip0001.MXF", selected:true});
+  const camA=new M.Clip({name:"Clip0001.MXF", mediaType:"Audio", start:2, end:302, inPoint:0, media:"C:/Clip0001.MXF", selected:true});
+  const fim=new M.Clip({name:"final.mp3", mediaType:"Audio", start:400, end:450, inPoint:0, media:"C:/final.mp3"});
+  const seq=new M.Seq({video:[[camV]], audio:[[mesa, fim],[camA]], endSec:500}); const {ctx}=load(seq);
+  let r=JSON.parse(ctx.cc_getJobs({range:false, track:"auto"}));
+  ok(r.jobs.length===1 && r.jobs[0].media==="C:/mesa.mp3" && r.dropped.join()==="Clip0001.MXF", "seleção com a mesma fala em 2 áudios: usa só a trilha mais baixa");
+  r=JSON.parse(ctx.cc_getJobs(false)); ok(r.jobs.length===1 && r.jobs[0].track==="A1", "formato antigo (só o range) continua funcionando");
+  [mesa,camV,camA].forEach(c=>c.selected=false);
+  r=JSON.parse(ctx.cc_getJobs({track:"auto"})); ok(r.jobs.length===2 && r.from==="A1" && r.jobs[1].name==="final.mp3", "sem seleção: a trilha A1 inteira");
+  r=JSON.parse(ctx.cc_getJobs({track:"A2"})); ok(r.jobs.length===1 && r.jobs[0].media==="C:/Clip0001.MXF" && r.from==="A2", "trilha escolhida: A2");
+  r=JSON.parse(ctx.cc_getJobs({track:"A5"})); ok(/não existe/.test(r.error), "trilha que não existe avisa");
+  fim.selected=true; r=JSON.parse(ctx.cc_getJobs({track:"A2"})); ok(/não tem clipes com áudio na parte selecionada/.test(r.error), "trilha escolhida + seleção fora dela avisa");
+  fim.selected=false; camV.selected=true; r=JSON.parse(ctx.cc_getJobs({track:"A1"})); ok(r.jobs.length===1 && r.jobs[0].name==="mesa.mp3", "trilha escolhida só na parte selecionada");
+  const t=JSON.parse(ctx.cc_audioTracks()); ok(t.tracks.length===2 && t.tracks[0].key==="A1" && t.tracks[0].names.join()==="mesa.mp3,final.mp3" && t.tracks[1].names[0]==="Clip0001.MXF", "lista das trilhas");
+  // marcar pela seleção: um marcador só, do começo do primeiro ao fim do último
+  camV.selected=false; mesa.selected=true; fim.selected=true;
+  let m=JSON.parse(ctx.cc_markRange({color:0, name:"Corte {n}", comment:""}));
+  ok(m.start===0 && m.end===450 && m.from==="seleção" && seq.markers.list.length===1, "marcar pela seleção (2 clipes = 1 marcador)");
+  mesa.selected=false; fim.selected=false; seq.inP=10; seq.outP=20;
+  m=JSON.parse(ctx.cc_markRange({color:0, name:"Corte {n}", comment:""})); ok(m.start===10 && m.end===20 && m.from==="inout" && m.name==="Corte 2", "sem seleção: In/Out");
+  seq.inP=0; seq.outP=500; m=JSON.parse(ctx.cc_markRange({color:0, name:"Corte {n}", comment:""})); ok(/Selecione os clipes/.test(m.error), "sem seleção e sem In/Out avisa");
+}
+// ---- 11. conferir o Upgrade para gráfico: conta os gráficos (clipes de vídeo sem mídia)
+{
+  const v=new M.Clip({name:"cam", start:0, end:10, media:"C:/a.mp4"}), g=new M.Clip({name:"Gráfico", start:1, end:2, media:""});
+  const seq=new M.Seq({video:[[v],[g]], endSec:10}); const {ctx}=load(seq);
+  ok(JSON.parse(ctx.cc_graphicsCount()).count===1, "conta 1 gráfico");
+  seq.vt[1].push(new M.Clip({name:"Gráfico", start:3, end:4, media:""})); ok(JSON.parse(ctx.cc_graphicsCount()).count===2, "conta o gráfico novo");
+}
 console.log("host.jsx: " + pass + " checagens ok");

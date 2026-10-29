@@ -409,11 +409,31 @@ def compile_list(items):
 
 # ---------------------------------------------------------------- frases
 def merge_words(trans):
+    """Junta as palavras de todos os clipes, em ordem. Se dois audios tiverem a mesma fala
+    (ex.: mesa e camera tocando juntas), cada palavra aparece uma vez so: fica a do primeiro
+    clipe que cobre aquele trecho, e as palavras dos outros clipes que caem em cima dela saem."""
     words = []
-    for t in trans:
-        words.extend(t["words"])
-    words.sort(key=lambda w: w[1])
-    return words
+    for k, t in enumerate(trans):
+        for w in t["words"]:
+            words.append((w, k))
+    words.sort(key=lambda x: x[0][1])
+    out, last = [], {}
+    for w, k in words:
+        dup = False
+        for j in range(len(out) - 1, max(-1, len(out) - 8), -1):
+            p, pk = out[j]
+            if p[2] < w[1] - 0.6:
+                break
+            if pk == k:
+                continue
+            same = norm(p[0]) == norm(w[0]) and abs(p[1] - w[1]) < 0.6
+            covered = min(p[2], w[2]) - max(p[1], w[1]) > 0.5 * max(0.05, min(p[2] - p[1], w[2] - w[1]))
+            if same or covered:
+                dup = True
+                break
+        if not dup:
+            out.append((w, k))
+    return [w for w, k in out]
 
 
 def split_sentences(words, max_gap=1.0, max_words=40):
@@ -673,15 +693,24 @@ def build_captions(trans, opts, rng=None):
         else:
             cues.append([line[0][1], line_end, " ".join(tx(w) for w in line)])
 
-    # sem sobreposicao e sem legenda curta demais (1 quadro no minimo)
+    # uma legenda por vez na tela: nada de sobreposicao (o Premiere empilha as que se
+    # sobrepoem, e virava um bloco de varias linhas) e nada menor que 1 quadro
+    MIN = 0.034
+    cues = [c for c in cues if c[2].strip()]
+    cues.sort(key=lambda c: c[0])
     out = []
-    for c in cues:
+    for i, c in enumerate(cues):
+        c[2] = " ".join(c[2].split())                      # uma linha so, sem quebra
+        nxt = cues[i + 1][0] if i + 1 < len(cues) else None
+        if nxt is not None:
+            c[1] = min(c[1], nxt)
+        if c[1] - c[0] < MIN:
+            if nxt is not None and nxt - c[0] < MIN:
+                continue                                   # cabe menos de 1 quadro: pula este passo
+            c[1] = c[0] + MIN
         if out and c[0] < out[-1][1]:
             out[-1][1] = c[0]
-        if c[1] - c[0] < 0.034:
-            c[1] = c[0] + 0.034
         out.append(c)
-    out = [c for c in out if c[2].strip()]
     srt = []
     for i, (a, b, t) in enumerate(out, 1):
         srt.append("%d\n%s --> %s\n%s\n" % (i, fmt_srt(a), fmt_srt(b), t))
