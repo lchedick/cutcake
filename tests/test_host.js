@@ -95,4 +95,54 @@ let pass=0; const ok=(c,m)=>{ assert.ok(c,m); pass++; };
   ok(Math.abs(camV.start.seconds-123.47)<1e-6 && Math.abs(camA.start.seconds-123.47)<1e-6, "vídeo e áudio andam juntos, uma vez só");
   ok(mesa.start.seconds===0, "a referência fica parada");
 }
+// ---- 8. takes: montagem 1 min depois do último clipe, mesmas trilhas, mesmo arquivo
+function takeSeq(){
+  const camPI=new M.PItem("C:/aviso/cam.MXF", 400, true, true), mesaPI=new M.PItem("C:/aviso/mesa.wav", 400, false, true);
+  const camV=new M.Clip({name:"cam.MXF", start:0, end:200, inPoint:0, media:camPI.media, pi:camPI});
+  const camA=new M.Clip({name:"cam.MXF", mediaType:"Audio", start:0, end:200, inPoint:0, media:camPI.media, pi:camPI});
+  const mesa=new M.Clip({name:"mesa.wav", mediaType:"Audio", start:0, end:200, inPoint:5, media:mesaPI.media, pi:mesaPI});
+  const titulo=new M.Clip({name:"Título", start:20, end:140, media:""});
+  const seq=new M.Seq({video:[[camV],[titulo]], audio:[[mesa],[camA]], endSec:200});
+  const mk=(a,b,tag)=>{ const m=seq.markers.createMarker(a); m.end=b; m.color=6; m.name="Take"; m.comments=tag?"x\n[CutCake take]":""; return m; };
+  mk(30,50,true); mk(100,125,true); mk(150,160,false);
+  return {seq, camV, camA, mesa, camPI, mesaPI};
+}
+{
+  const T=takeSeq(); const {ctx}=load(T.seq);
+  const r=JSON.parse(ctx.cc_takesMontage({sequenceId:"seq1", color:6, onlyTag:true, gap:60}));
+  ok(r.ok && r.start===260 && Math.abs(r.end-305)<1e-6 && r.takes.length===2, "montagem: 2 takes a partir de 260s "+JSON.stringify(r));
+  const at=(arr,t)=>arr.filter(c=>Math.abs(c.start.seconds-t)<1e-6)[0];
+  const v1=T.seq.vt[0], a1=T.seq.at[0], a2=T.seq.at[1], v2=T.seq.vt[1];
+  let c=at(v1,260); ok(c && c.inPoint.seconds===30 && c.end.seconds===280 && c.mediaType==="Video", "take 1 vídeo em V1");
+  c=at(v1,280); ok(c && c.inPoint.seconds===100 && Math.abs(c.end.seconds-305)<1e-6, "take 2 vídeo logo em seguida");
+  c=at(a1,260); ok(c && c.name==="mesa.wav" && c.inPoint.seconds===35, "mesa em A1 com o mesmo deslocamento");
+  c=at(a2,280); ok(c && c.name==="cam.MXF" && c.inPoint.seconds===100, "áudio da câmera em A2");
+  ok(v2.length===1 && v1.length===3 && a1.length===3 && a2.length===3, "nada sobrando fora do lugar (gráfico não vai, sobras apagadas)");
+  ok(T.camV.start.seconds===0 && T.camV.end.seconds===200 && T.mesa.end.seconds===200, "original intacto");
+  ok(T.camPI.io[0]===0 && T.camPI.io[1]===400 && T.mesaPI.io[1]===400, "recorte do item do projeto restaurado");
+  ok(r.skipped.indexOf("Título")>=0 && Math.abs(T.seq.player-260)<1e-6, "avisa o gráfico e leva a agulha até a montagem");
+  const r2=JSON.parse(ctx.cc_takesMontage({sequenceId:"seq1", color:6, onlyTag:false, gap:60}));
+  ok(r2.ok && r2.start===365 && r2.takes.length===3, "todos os azuis, depois da primeira montagem");
+}
+{
+  const T=takeSeq(); T.seq.markers.list.forEach(m=>m.comments=""); const {ctx}=load(T.seq);
+  const r=JSON.parse(ctx.cc_takesMontage({sequenceId:"seq1", color:6, onlyTag:true, gap:60}));
+  ok(!r.ok && r.reason==="nomarkers" && r.other===3, "sem takes do CutCake: avisa");
+}
+{
+  const T=takeSeq(); const {ctx}=load(T.seq); M.OPTS.secondsAsTicks=true;
+  const r=JSON.parse(ctx.cc_takesMontage({sequenceId:"seq1", color:6, onlyTag:true, gap:60})); M.OPTS.secondsAsTicks=false;
+  ok(r.error && /lugar certo/.test(r.error), "se o Premiere colar no lugar errado, para na primeira");
+}
+// ---- 9. fila: clipes e marcadores que ainda existem
+{
+  const T=takeSeq(); const {ctx}=load(T.seq);
+  const g=T.seq.markers.list.map(m=>m.guid);
+  T.seq.at[1].splice(0,1); T.seq.markers.deleteMarker(T.seq.markers.list[0]);
+  const r=JSON.parse(ctx.cc_exists({sequenceId:"seq1", nodeIds:[T.camV.nodeId, T.camA.nodeId], guids:g}));
+  ok(r.seq && r.nodeIds[T.camV.nodeId] && !r.nodeIds[T.camA.nodeId] && !r.guids[g[0]] && r.guids[g[1]], "exists");
+  ok(JSON.parse(ctx.cc_exists({sequenceId:"outra", nodeIds:[]})).seq===false, "sequência apagada");
+  const a=JSON.parse(ctx.cc_addMarkers({sequenceId:"seq1", color:6, items:[{start:1,end:2,name:"x",comment:""}]}));
+  ok(a.guids.length===1 && a.guids[0]===T.seq.markers.list[0].guid, "addMarkers devolve o guid");
+}
 console.log("host.jsx: " + pass + " checagens ok");

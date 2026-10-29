@@ -119,13 +119,14 @@
   function load(k, d) { try { var v = localStorage.getItem("cc_" + k); return v === null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem("cc_" + k, v); } catch (e) {} }
   var DEF = {
-    tab: "hunt", sPoints: "4", sSeg: "15", sSpeech: "auto", hCount: "5", hMin: "30", hMax: "90", hReplace: "1", hRange: "1",
+    sPoints: "4", sSeg: "15", sSpeech: "auto", hCount: "5", hMin: "30", hMax: "90", hReplace: "1", hRange: "1",
     capStyle: "rise", capMode: "line", cWords: "4", cChars: "24", cDur: "25", cDist: "40", cUpper: "0", cPunct: "1", cRange: "1",
     zAmount: "15", zRamp: "4", zFocus: "0.5", zForce: "0",
+    tPause: "20", tPad: "3", tReplace: "1", tUse: "own", tSil: "10", tAfter: "", tBefore: "",
     rPreset: "", rFolder: "", rName: "{data} - corte {n}", rStart: "1",
-    model: "auto", gpu: "1", colorCut: "0", colorZoom: "4", lists: "",
+    model: "auto", gpu: "1", colorCut: "0", colorZoom: "4", colorTake: "6", lists: "",
     sounds: "1", vol: "100", notify: "1", fgonly: "1", autoupd: "1", ui: "1",
-    tab_sync: "1", tab_hunt: "1", tab_captions: "1", tab_zoom: "1", tab_render: "1"
+    tab_sync: "1", tab_takes: "1", tab_hunt: "1", tab_captions: "1", tab_zoom: "1", tab_render: "1"
   };
   // cores de marcador do Premiere (indice da API)
   var COLORS = [
@@ -133,7 +134,8 @@
     { name: "Laranja", hex: "#f08c2c" }, { name: "Amarelo", hex: "#e9c92f" }, { name: "Branco", hex: "#e6e6e6" },
     { name: "Azul", hex: "#3b7ff0" }, { name: "Ciano", hex: "#2fc6d6" }
   ];
-  var TAG_HUNT = "[CutCake]";
+  var TAG_HUNT = "[CutCake]", TAG_TAKE = "[CutCake take]";
+  var DEFAULT_AFTER = ["esse foi", "esse ficou bom", "ficou bom", "foi esse", "esse valeu"];
   var MODEL_HINT = {
     auto: "Usa o Preciso quando tem placa de vídeo NVIDIA e o Rápido quando não tem.",
     small: "Modelo menor (cerca de 0,5 GB). Bom para computadores sem placa de vídeo.",
@@ -159,12 +161,12 @@
     var z = Number(load("ui", "1")) || 1;
     var w = window.innerWidth / z - 24;
     each(document.querySelectorAll(".actions"), function (a) { a.classList.toggle("stack", w < 270); });
-    $("tabs").classList.toggle("compact", w < 250);
+    $("home").classList.toggle("one", w < 270);
   }
   window.addEventListener("resize", fitActions);
 
-  var SLIDERS = ["sPoints", "sSeg", "hCount", "hMin", "hMax", "cWords", "cChars", "cDur", "cDist", "zAmount", "zRamp", "vol"];
-  var CHECKS = { hReplace: "hReplace", hRange: "hRange", cUpper: "cUpper", cPunct: "cPunct", cRange: "cRange", zForce: "zForce",
+  var SLIDERS = ["sPoints", "sSeg", "tPause", "tPad", "tSil", "hCount", "hMin", "hMax", "cWords", "cChars", "cDur", "cDist", "zAmount", "zRamp", "vol"];
+  var CHECKS = { tReplace: "tReplace", hReplace: "hReplace", hRange: "hRange", cUpper: "cUpper", cPunct: "cPunct", cRange: "cRange", zForce: "zForce",
                  rStart: "rStart", optGpu: "gpu", optSounds: "sounds", optNotify: "notify", optFgOnly: "fgonly", optAutoUpd: "autoupd" };
   function refresh() {
     // a duracao maxima nunca fica abaixo da minima
@@ -173,6 +175,12 @@
     $("sPointsV").textContent = plural(Number($("sPoints").value), "ponto", "pontos");
     $("sSegV").textContent = $("sSeg").value + "s";
     $("sumSync").textContent = $("sPoints").value + " × " + $("sSeg").value + "s" + (segVal("sSpeech") === "always" ? " · pela fala" : segVal("sSpeech") === "never" ? " · só som" : "");
+    var sec1 = function (id) { return (Number($(id).value) / 10).toFixed(1).replace(".", ",") + "s"; };
+    $("tPauseV").textContent = sec1("tPause"); $("tPadV").textContent = sec1("tPad"); $("tSilV").textContent = sec1("tSil");
+    $("sumTakes").textContent = "pausa " + sec1("tPause") + " · folga " + sec1("tPad");
+    $("tUseHint").textContent = segVal("tUse") === "all"
+      ? "Todos os marcadores com duração na cor " + colorName(colorTake()) + ", inclusive os que você criou ou ajustou à mão."
+      : "Só os marcadores que o “Marcar takes” criou (você pode ajustar as pontas deles).";
     $("hCountV").textContent = plural(Number($("hCount").value), "corte", "cortes");
     $("hMinV").textContent = $("hMin").value + "s"; $("hMaxV").textContent = $("hMax").value + "s";
     $("cWordsV").textContent = $("cWords").value; $("cCharsV").textContent = $("cChars").value;
@@ -204,6 +212,7 @@
     $("py").value = load("py", defaultPy());
     $("rName").value = load("rName", DEF.rName);
     setSeg("sSpeech", load("sSpeech", DEF.sSpeech));
+    setSeg("tUse", load("tUse", DEF.tUse));
     setSeg("capStyle", load("capStyle", DEF.capStyle));
     setSeg("capMode", load("capMode", DEF.capMode));
     setSeg("zFocus", load("zFocus", DEF.zFocus));
@@ -212,10 +221,11 @@
     each(document.querySelectorAll("[data-tabvis]"), function (el) { el.checked = load("tab_" + el.dataset.tabvis, "1") === "1"; });
     paintSwatches();
     loadLists();
+    loadTriggers();
     applyTabs();
     refresh();
   }
-  [["sSpeech", "sSpeech"], ["capStyle", "capStyle"], ["capMode", "capMode"], ["zFocus", "zFocus"], ["model", "model"]].forEach(function (p) {
+  [["sSpeech", "sSpeech"], ["tUse", "tUse"], ["capStyle", "capStyle"], ["capMode", "capMode"], ["zFocus", "zFocus"], ["model", "model"]].forEach(function (p) {
     $(p[0]).addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       setSeg(p[0], b.dataset.v); save(p[1], b.dataset.v); refresh();
@@ -227,36 +237,75 @@
   });
   // duplo clique no slider volta ao padrao
   SLIDERS.forEach(function (id) { $(id).addEventListener("dblclick", function () { $(id).value = DEF[id]; refresh(); }); });
-  ["moreSync", "moreHunt", "moreCap", "moreZoom", "foldPy", "foldSup", "foldHunt"].forEach(function (id) {
+  ["moreSync", "moreTakes", "moreHunt", "moreCap", "moreZoom", "foldPy", "foldSup", "foldHunt", "foldTakes"].forEach(function (id) {
     $(id).open = load("open_" + id, "0") === "1";
     $(id).addEventListener("toggle", function () { save("open_" + id, $(id).open ? "1" : "0"); });
   });
   $("playOk").addEventListener("click", function () { play("Alert_OK.mp3", true); });
   $("playFail").addEventListener("click", function () { play("Alert_FAIL.mp3", true); });
 
-  // ------------------------------------------------------------ abas
-  var tab = "hunt";
+  // ------------------------------------------------------------ tela inicial e funcoes
+  // O painel sempre abre na tela inicial (6 botoes, na ordem do fluxo). Dentro de uma funcao,
+  // o "<" + logo + nome no cabecalho volta para o inicio. Funcoes desligadas em
+  // Configuracoes -> Interface somem da tela inicial.
+  var tab = "home", visibleTabs = [];
   function applyTabs() {
-    var visible = [];
-    each($("tabs").querySelectorAll("button"), function (b) {
+    visibleTabs = [];
+    each($("home").querySelectorAll(".hbtn"), function (b) {
       var on = load("tab_" + b.dataset.tab, "1") === "1";
       b.hidden = !on;
-      if (on) visible.push(b.dataset.tab);
+      if (on) visibleTabs.push(b.dataset.tab);
     });
-    $("tabs").hidden = visible.length <= 1;
-    var want = load("tab", DEF.tab);
-    showTab(visible.indexOf(want) >= 0 ? want : (visible[0] || "hunt"));
+    if (visibleTabs.length === 1) showTab(visibleTabs[0]);
+    else if (tab !== "home" && visibleTabs.indexOf(tab) < 0) showHome();
+    else if (tab === "home") showHome();
+    else showTab(tab);
+  }
+  function showStatusOf(t) {
+    var q = Q[t];
+    setStatus(q.statusMsg || "", q.statusCls, q.statusBig);
+    if (q.mission) $("status").innerHTML = q.mission;
+  }
+  function setHomeBtn(atHome) {
+    var hb = $("homeBtn");
+    hb.classList.toggle("at-home", atHome);
+    hb.title = atHome ? "CutCake • Cortes, legendas e zoom" : "Voltar para o início";
+  }
+  function showHome() {
+    if (visibleTabs.length === 1) return showTab(visibleTabs[0]);
+    tab = "home";
+    setHomeBtn(true);
+    $("home").hidden = false;
+    each(document.querySelectorAll("section.tab"), function (s) { s.hidden = true; });
+    showStatusOf("home");
+    renderQueue();
   }
   function showTab(t) {
-    tab = t; save("tab", t);
-    each($("tabs").querySelectorAll("button"), function (b) { b.classList.toggle("on", b.dataset.tab === t); });
+    tab = t;
+    setHomeBtn(visibleTabs.length <= 1);
+    $("home").hidden = true;
     each(document.querySelectorAll("section.tab"), function (s) { s.hidden = s.id !== "tab-" + t; });
-    if (!busyEngine || (Q[t] && Q[t].active)) setStatus(Q[t] ? Q[t].statusMsg || "" : "", Q[t] ? Q[t].statusCls : "", Q[t] ? Q[t].statusBig : false);
-    if (Q[t] && Q[t].mission) $("status").innerHTML = Q[t].mission;
+    showStatusOf(t);
     renderQueue();
     if (t === "render") refreshRender();
   }
-  $("tabs").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+  $("home").addEventListener("click", function (e) { var b = e.target.closest(".hbtn"); if (b) showTab(b.dataset.tab); });
+  $("homeBtn").addEventListener("click", function () { if (tab !== "home") showHome(); });
+  // botoes da tela inicial: progresso de quem esta rodando e o resultado da ultima vez
+  function updateHome() {
+    each($("home").querySelectorAll(".hbtn"), function (b) {
+      var q = Q[b.dataset.tab], st = b.querySelector(".hstat"), txt = "", cls = "";
+      if (!q) return;
+      var pct = Math.round((q.overall || 0) * 100);
+      if (q.active) { txt = q.waiting ? "Na fila do Media Encoder" : "Rodando · " + pct + "%"; cls = "run"; }
+      else if (q.mission) { txt = "✓ Pronto"; cls = "ok"; }
+      else if (q.statusCls === "err" && q.statusMsg) { txt = "✗ Com problema"; cls = "err"; }
+      b.classList.toggle("running", !!q.active);
+      b.querySelector(".hbar > div").style.width = pct + "%";
+      if (st.textContent !== txt) st.textContent = txt;
+      st.className = "hstat" + (cls ? " " + cls : "");
+    });
+  }
   each(document.querySelectorAll("[data-tabvis]"), function (el) {
     el.addEventListener("change", function () {
       var on = document.querySelectorAll("[data-tabvis]:checked").length;
@@ -267,19 +316,20 @@
   });
 
   // ------------------------------------------------------------ cores dos marcadores
+  var COLOR_KEYS = { colorCut: "corte", colorZoom: "zoom", colorTake: "take" };
   function paintSwatches() {
-    [["colorCut", "colorCut"], ["colorZoom", "colorZoom"]].forEach(function (p) {
-      var box = $(p[0]), mine = Number(load(p[1], DEF[p[1]]));
-      var other = Number(load(p[1] === "colorCut" ? "colorZoom" : "colorCut", DEF[p[1] === "colorCut" ? "colorZoom" : "colorCut"]));
+    Object.keys(COLOR_KEYS).forEach(function (key) {
+      var box = $(key), mine = Number(load(key, DEF[key])), taken = {};
+      Object.keys(COLOR_KEYS).forEach(function (o) { if (o !== key) taken[Number(load(o, DEF[o]))] = COLOR_KEYS[o]; });
       box.innerHTML = "";
       COLORS.forEach(function (c, i) {
         var b = document.createElement("button");
-        b.className = "sw" + (i === mine ? " on" : "") + (i === other ? " taken" : "");
-        b.style.background = c.hex; b.title = c.name + (i === other ? " (já usada pela outra marcação)" : "");
+        b.className = "sw" + (i === mine ? " on" : "") + (taken[i] ? " taken" : "");
+        b.style.background = c.hex; b.title = c.name + (taken[i] ? " (já usada pelo " + taken[i] + ")" : "");
         b.addEventListener("click", function () {
-          if (i === other) { $("colorResult").className = "result err"; $("colorResult").textContent = "Corte e zoom precisam de cores diferentes."; return; }
-          save(p[1], String(i)); $("colorResult").className = "result"; $("colorResult").textContent = "";
-          paintSwatches();
+          if (taken[i]) { $("colorResult").className = "result err"; $("colorResult").textContent = "Corte, zoom e take precisam de cores diferentes."; return; }
+          save(key, String(i)); $("colorResult").className = "result"; $("colorResult").textContent = "";
+          paintSwatches(); refresh();
         });
         box.appendChild(b);
       });
@@ -287,6 +337,7 @@
   }
   function colorCut() { return Number(load("colorCut", DEF.colorCut)); }
   function colorZoom() { return Number(load("colorZoom", DEF.colorZoom)); }
+  function colorTake() { return Number(load("colorTake", DEF.colorTake)); }
   function colorName(i) { return (COLORS[i] || { name: "?" }).name.toLowerCase(); }
 
   // ------------------------------------------------------------ palavras do Cacador
@@ -319,15 +370,31 @@
     save("lists", Object.keys(out).length ? JSON.stringify(out) : "");
   }
   Object.keys(LIST_IDS).forEach(function (k) { $(LIST_IDS[k]).addEventListener("change", saveLists); });
+
+  // gatilhos dos Takes: "depois do take" (confirmacao) e "antes do take" (ex.: "acao", vazio por padrao)
+  function linesOf(id) { return $(id).value.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  function loadTriggers() {
+    var a = load("tAfter", ""), b = load("tBefore", "");
+    $("tAfter").value = a ? a : DEFAULT_AFTER.join("\n");
+    $("tBefore").value = b;
+  }
+  function saveTriggers() {
+    var a = linesOf("tAfter");
+    save("tAfter", a.join("|") === DEFAULT_AFTER.join("|") ? "" : a.join("\n"));
+    save("tBefore", linesOf("tBefore").join("\n"));
+  }
+  ["tAfter", "tBefore"].forEach(function (id) { $(id).addEventListener("change", saveTriggers); });
+  $("resetTrig").addEventListener("click", function () { save("tAfter", ""); save("tBefore", ""); loadTriggers(); });
   $("resetLists").addEventListener("click", function () { save("lists", ""); loadLists(); });
 
   // ------------------------------------------------------------ fila (uma por aba)
   // item: { name, state, progress, msg, t (tempo na sequencia, para clicar), pct (selo), dur, jobID }
   var Q = {
-    sync: { items: [], title: "Fila" }, hunt: { items: [], title: "Fila" }, captions: { items: [], title: "Fila" },
-    zoom: { items: [], title: "Resultado" }, render: { items: [], title: "Fila do Media Encoder" }
+    home: { items: [], title: "Fila" },
+    sync: { items: [], title: "Fila" }, takes: { items: [], title: "Fila" }, hunt: { items: [], title: "Fila" },
+    captions: { items: [], title: "Fila" }, zoom: { items: [], title: "Resultado" }, render: { items: [], title: "Fila do Media Encoder" }
   };
-  var RUN_ICON = { sync: "Sync", hunt: "Hunt", captions: "Captions", zoom: "Zoom", render: "Render" };
+  var RUN_ICON = { sync: "Sync", takes: "Takes", hunt: "Hunt", captions: "Captions", zoom: "Zoom", render: "Render" };
   var ST = { queued: "Na fila", ok: "Pronto", fail: "Falhou", skip: "Pulado", cancel: "Cancelado", info: "" };
   function iconFor(it, k) {
     if (it.state === "running") return [RUN_ICON[k] || "Queue", "c-accent"];
@@ -350,7 +417,13 @@
     return icon(ic[0], ic[1]) + '<span class="name">' + esc(it.name) + '</span><span class="st">' + st + "</span>" + sub + msg;
   }
   function renderQueue() {
+    updateHome();
+    // barra no icone do Premiere: a fila que estiver rodando (mesmo se a tela mostrar outra)
+    var run = Object.keys(Q).filter(function (k) { return Q[k].active; })[0];
+    if (run) taskbar.set(Q[run].overall || 0);
     var q = Q[tab], ul = $("queueList");
+    // na tela inicial a fila so aparece se houver algo (ex.: instalando a transcricao)
+    $("queueCard").hidden = tab === "home" && !q.items.length;
     $("qtitle").textContent = q.title;
     $("qempty").style.display = q.items.length ? "none" : "";
     $("qstatus").textContent = q.sub || "";
@@ -384,8 +457,16 @@
     $("cancel").hidden = !(q.active && q.cancelable);
     $("eta").hidden = !(q.active && q.eta);
     if (q.eta) $("etaText").textContent = q.eta;
-    if (q.active) taskbar.set(frac);
+    $("qclear").hidden = !!q.active || !q.items.length || q.items.some(function (it) { return it.state === "queued" || it.state === "running"; });
   }
+  // "Limpar fila": so tira da tela o que ja terminou
+  function clearQueue(k) {
+    Object.assign(Q[k], { items: [], overall: 0, sub: "", eta: "", mission: "", statusMsg: "", statusCls: "", statusBig: false });
+    if (k === "render") renderJobs = {};
+    if (k === tab) { setStatus(""); renderQueue(); } else updateHome();
+  }
+  $("qclear").addEventListener("click", function () { clearQueue(tab); });
+  function qRender(k) { if (k === tab) renderQueue(); else updateHome(); }
   $("queueList").addEventListener("click", async function (e) {
     var li = e.target.closest("li"); if (!li) return;
     var it = Q[tab].items[Number(li.dataset.i)];
@@ -393,15 +474,56 @@
     try { await host("cc_goTo", { sequenceId: Q[tab].sequenceId || "", t: it.t }); }
     catch (err) { setStatus(err.message, "err"); }
   });
-  function qSet(k, patch) { Object.assign(Q[k], patch); if (k === tab) renderQueue(); }
+  function qSet(k, patch) { Object.assign(Q[k], patch); qRender(k); }
   function qStatus(k, msg, cls, big) {
     Q[k].statusMsg = msg; Q[k].statusCls = cls; Q[k].statusBig = big; Q[k].mission = "";
     if (k === tab) setStatus(msg, cls, big);
+    updateHome();
   }
   function qMission(k, what, time, extra) {
-    Q[k].mission = missionHTML(what, time, extra); Q[k].statusMsg = "";
+    Q[k].mission = missionHTML(what, time, extra); Q[k].statusMsg = ""; Q[k].statusCls = "";
     if (k === tab) { $("status").className = ""; $("status").innerHTML = Q[k].mission; }
+    updateHome();
   }
+
+  // "higiene" da fila: se o clipe (ou o marcador) de um item foi apagado da sequencia, o item sai
+  var pruning = false;
+  async function pruneQueues() {
+    if (pruning || busyEngine || renderRun || document.hidden) return;
+    var ask = {};
+    Object.keys(Q).forEach(function (k) {
+      var q = Q[k];
+      if (q.active || !q.sequenceId) return;
+      q.items.forEach(function (it) {
+        if (!it.nodeIds && !it.guid) return;
+        var a = ask[q.sequenceId] || (ask[q.sequenceId] = { sequenceId: q.sequenceId, nodeIds: [], guids: [] });
+        if (it.nodeIds) a.nodeIds = a.nodeIds.concat(it.nodeIds);
+        if (it.guid) a.guids.push(it.guid);
+      });
+    });
+    var ids = Object.keys(ask);
+    if (!ids.length) return;
+    pruning = true;
+    try {
+      for (var n = 0; n < ids.length; n++) {
+        var r = await host("cc_exists", ask[ids[n]]);
+        Object.keys(Q).forEach(function (k) {
+          var q = Q[k];
+          if (q.active || q.sequenceId !== ids[n]) return;
+          var before = q.items.length;
+          q.items = q.items.filter(function (it) {
+            if (!it.nodeIds && !it.guid) return true;
+            if (!r.seq) return false;
+            if (it.guid) return !!r.guids[it.guid];
+            return it.nodeIds.some(function (id) { return r.nodeIds[id]; });
+          });
+          if (q.items.length !== before) qRender(k);
+        });
+      }
+    } catch (e) {}
+    pruning = false;
+  }
+  setInterval(pruneQueues, 2500);
 
   // tempo estimado: progresso por segundo de relogio
   function etaText(start, frac) {
@@ -495,14 +617,14 @@
 
   function setBusy(b, kind) {
     busyEngine = b;
-    ["syncBtn", "sRead", "huntBtn", "huntClear", "capCreate", "capUpgrade", "updateBtn", "hdrUpdate", "installWhisper", "testPy", "clearCache"].forEach(function (id) { $(id).disabled = b; });
+    ["syncBtn", "sRead", "takesBtn", "takesMontage", "huntBtn", "huntClear", "capCreate", "capUpgrade", "updateBtn", "hdrUpdate", "installWhisper", "testPy", "clearCache"].forEach(function (id) { $(id).disabled = b; });
     refresh();
     if (!b) $("cancel").disabled = false;
   }
   $("cancel").addEventListener("click", function () {
     if (!busyEngine) return;
     cancelled = true; $("cancel").disabled = true;
-    qStatus(tab, "Cancelando…");
+    qStatus(Object.keys(Q).filter(function (k) { return Q[k].active; })[0] || tab, "Cancelando…");
     killTree(current);
   });
 
@@ -515,15 +637,15 @@
         var run = q.items.filter(function (x) { return x.state === "running"; })[0];
         if (run && run.w) run.progress = Math.max(0, Math.min(0.99, (p - run.w0) / run.w));
         q.eta = etaText(start, p);
-        if (k === tab) renderQueue();
+        qRender(k);
       },
-      status: function (s) { q.sub = s; if (k === tab) renderQueue(); },
+      status: function (s) { q.sub = s; qRender(k); },
       job: function (i) {
         q.items.forEach(function (x, n) {
           if (n < i && x.state === "running") { x.state = "ok"; x.progress = 1; }
           if (n === i) { x.state = "running"; x.progress = 0; }
         });
-        if (k === tab) renderQueue();
+        qRender(k);
       }
     };
   }
@@ -531,6 +653,7 @@
     var tot = sel.jobs.reduce(function (s, j) { return s + Math.max(0.1, j.out - j.in); }, 0), acc = 0;
     return sel.jobs.map(function (j) {
       var w = Math.max(0.1, j.out - j.in) / tot * 0.95, it = { name: prefix + j.name, state: "queued", progress: 0, w0: acc * 0.95 / tot, w: w, msg: "" };
+      if (j.nodeId) it.nodeIds = [j.nodeId];
       acc += Math.max(0.1, j.out - j.in);
       return it;
     });
@@ -540,14 +663,14 @@
     cancelled = false;
     setBusy(true, k);
     taskbar.start();
-    renderQueue();
+    qRender(k);
   }
   function endQueue(k, err) {
     Q[k].active = false; Q[k].eta = ""; Q[k].sub = ""; cancelled = false;
     if (!err) Q[k].overall = 1;
     setBusy(false);
     if (err === "cancel") taskbar.stop(); else taskbar.finish(!!err);
-    renderQueue();
+    qRender(k);
   }
   function friendly(e) {
     return e.message === "__cancel__" ? "cancel" : e.message;
@@ -586,7 +709,8 @@
     var others = sel.groups.filter(function (g) { return g.key !== refKey; });
     var t0 = Date.now(), n = others.length;
     startQueue("sync", "Sincronizar com " + ref.name, others.map(function (g, i) {
-      return { name: g.name, state: "queued", progress: 0, w0: 0.4 + 0.6 * i / n, w: 0.6 / n, msg: "" };
+      return { name: g.name, state: "queued", progress: 0, w0: 0.4 + 0.6 * i / n, w: 0.6 / n, msg: "",
+               nodeIds: g.items.map(function (x) { return x.nodeId; }) };
     }), sel.sequenceId);
     Q.sync.sub = "Referência: " + groupLabel(ref);
     var pick = function (g) { return { key: g.key, media: g.media, "in": g["in"], out: g.out, seq_start: g.seq_start, speed: g.speed, name: g.name }; };
@@ -657,6 +781,100 @@
     } catch (e) { qStatus("sync", "Não consegui desfazer: " + e.message + " Use Ctrl+Z no Premiere.", "err"); }
   });
 
+  // ------------------------------------------------------------ TAKES
+  // Acha os takes bons (o ultimo bloco de fala antes do gatilho) e marca na timeline.
+  var WHY = { "sem pausa antes": "sem pausa antes", "sem pausa depois": "sem pausa depois", "não tem fala antes": "não tem fala antes",
+              "não tem fala depois": "não tem fala depois", "take curto demais": "o take ficou curto demais" };
+  $("takesBtn").addEventListener("click", async function () {
+    if (busyEngine) return;
+    $("log").textContent = ""; qStatus("takes", "");
+    var after = linesOf("tAfter"), before = linesOf("tBefore");
+    if (!after.length && !before.length) { qStatus("takes", "Nenhum gatilho configurado. Veja em Configurações → Takes.", "err"); return; }
+    var sel;
+    try { sel = await host("cc_getJobs", false); }
+    catch (e) { qStatus("takes", e.message, "err"); return; }
+    var t0 = Date.now();
+    startQueue("takes", "Takes", jobItems(sel, "Transcrever: "), sel.sequenceId);
+    var task = baseTask("takes", sel), pad = Number($("tPad").value) / 10;
+    task.takes = { pause: Number($("tPause").value) / 10, silence: Number($("tSil").value) / 10, pad_in: pad, pad_out: pad,
+                   after: after, before: before };
+    try {
+      var res = await engineTask(task, jobHandlers("takes", t0));
+      Q.takes.items.forEach(function (x) { if (x.state !== "fail") { x.state = "ok"; x.progress = 1; } });
+      Q.takes.sub = "Criando os marcadores…"; renderQueue();
+      if ($("tReplace").checked) { try { await host("cc_clearMarkers", { sequenceId: sel.sequenceId, tag: TAG_TAKE }); } catch (e1) { addLog(e1.message + "\n"); } }
+      var added = { guids: [] };
+      if (res.takes.length) {
+        added = await host("cc_addMarkers", { sequenceId: sel.sequenceId, color: colorTake(), items: res.takes.map(function (t) {
+          return { start: t.start, end: t.end, name: "Take " + t.n,
+                   comment: "“" + t.first + "”\nGatilho: " + t.trigger + " (" + fmtClock(t.trigger_t) + ")\n" + TAG_TAKE };
+        }) });
+      }
+      var silTxt = (Number($("tSil").value) / 10).toFixed(1).replace(".", ",") + " s";
+      Q.takes.items = res.takes.map(function (t, i) {
+        return { name: "Take " + t.n + " · " + fmtClock(t.start) + " (" + Math.round(t.end - t.start) + "s)", state: "info", icon: "Takes", st: "",
+                 t: t.start, guid: (added.guids || [])[i] || undefined,
+                 msg: "“" + t.first + "” … gatilho “" + t.trigger + "”" + (res.takes.length > 1 && t.clip ? " · " + t.clip : "") };
+      }).concat(res.ignored.map(function (g) {
+        return { name: "“" + g.trigger + "” em " + fmtClock(g.t), state: "skip", st: "Ignorado", t: g.t,
+                 msg: (WHY[g.why] || g.why) + ". O gatilho precisa de " + silTxt + " de silêncio antes e depois." };
+      }));
+      Q.takes.title = res.takes.length ? "Takes encontrados" : "Takes";
+      endQueue("takes", !res.takes.length);
+      var elapsed = (Date.now() - t0) / 1000;
+      if (res.takes.length) {
+        qMission("takes", plural(res.takes.length, "take marcado", "takes marcados"), fmtTime(elapsed),
+                 res.ignored.length ? plural(res.ignored.length, "gatilho ignorado", "gatilhos ignorados") : "");
+        play("Alert_OK.mp3");
+        notifyEnd("Missão cumprida!", plural(res.takes.length, "take marcado", "takes marcados") + " em " + fmtTime(elapsed) + ".");
+      } else {
+        qStatus("takes", !res.words ? "Não ouvi fala neste clipe." :
+                "Não achei nenhum gatilho (“" + (after[0] || before[0]) + "”…) com pausa em volta. Confira os gatilhos em Configurações → Takes.", "err", true);
+        play("Alert_FAIL.mp3");
+      }
+    } catch (e) {
+      var m = friendly(e);
+      Q.takes.items.forEach(function (x) { if (x.state === "running" || x.state === "queued") x.state = m === "cancel" ? "cancel" : "fail"; });
+      endQueue("takes", m === "cancel" ? "cancel" : true);
+      if (m === "cancel") qStatus("takes", "Cancelado.");
+      else { qStatus("takes", m, "err", true); play("Alert_FAIL.mp3"); notifyEnd("Os takes falharam", m); }
+    }
+  });
+
+  // Montagem: copia cada take (todas as trilhas) e cola um em seguida do outro, 1 min depois do ultimo clipe
+  $("takesMontage").addEventListener("click", async function () {
+    if (busyEngine) return;
+    qStatus("takes", "Montando…");
+    var own = segVal("tUse") !== "all";
+    $("takesMontage").disabled = true;
+    try {
+      var r = await host("cc_takesMontage", { sequenceId: "", color: colorTake(), onlyTag: own, gap: 60 });
+      if (r.reason === "nomarkers") {
+        qStatus("takes", own
+          ? "Nenhum take marcado pelo CutCake nesta sequência. Use “Marcar takes” primeiro" + (r.other ? " ou escolha “Todos da cor do take” embaixo." : ".")
+          : "Nenhum marcador com duração na cor " + colorName(colorTake()) + " nesta sequência.", "err");
+        $("takesMontage").disabled = busyEngine;
+        return;
+      }
+      var items = r.takes.map(function (t) {
+        var okT = (t.ok || 0) >= t.clips && t.clips > 0;
+        return { name: (t.name || "Take") + " → " + fmtClock(t.at), state: okT ? "ok" : "fail", st: Math.round(t.end - t.start) + "s", t: t.at,
+                 msg: "Do trecho " + fmtClock(t.start) + " – " + fmtClock(t.end) + " · " + plural(t.clips, "clipe", "clipes") + (okT ? "" : " · algum clipe não foi colado") };
+      });
+      qSet("takes", { items: items, title: "Montagem", overall: 1, sequenceId: r.sequenceId,
+                      sub: "Começa em " + fmtClock(r.start) + ", 1 minuto depois do último clipe. O original continua no lugar." });
+      if (r.fails.length) {
+        qStatus("takes", "Montei, mas não consegui colar: " + r.fails.slice(0, 3).join("; ") + (r.fails.length > 3 ? "…" : "") + ". Confira na timeline.", "err", true);
+        play("Alert_FAIL.mp3");
+      } else {
+        qMission("takes", plural(r.takes.length, "take montado", "takes montados"), "",
+                 r.skipped.length ? "gráficos e títulos não vão junto" : "");
+        play("Alert_OK.mp3");
+      }
+    } catch (e) { qStatus("takes", e.message, "err", true); play("Alert_FAIL.mp3"); }
+    $("takesMontage").disabled = busyEngine;
+  });
+
   // ------------------------------------------------------------ CAÇAR
   $("huntBtn").addEventListener("click", async function () {
     if (busyEngine) return;
@@ -678,11 +896,12 @@
         return { start: c.start, end: c.end, name: "Corte " + c.n + " • " + c.pct + "%",
                  comment: c.first + (c.reasons.length ? "\nMotivos: " + c.reasons.join(", ") : "") + "\n" + TAG_HUNT };
       });
-      await host("cc_addMarkers", { sequenceId: sel.sequenceId, color: colorCut(), items: items });
+      var added = await host("cc_addMarkers", { sequenceId: sel.sequenceId, color: colorCut(), items: items });
       var elapsed = (Date.now() - t0) / 1000;
-      Q.hunt.items = res.cuts.map(function (c) {
+      Q.hunt.items = res.cuts.map(function (c, i) {
         return { name: "Corte " + c.n + " · " + fmtClock(c.start) + " (" + Math.round(c.end - c.start) + "s)", state: "info", icon: "Marker",
-                 pct: c.pct, st: "", t: c.start, msg: "“" + c.first + "”" + (c.reasons.length ? " · " + c.reasons.join(", ") : "") };
+                 pct: c.pct, st: "", t: c.start, msg: "“" + c.first + "”" + (c.reasons.length ? " · " + c.reasons.join(", ") : ""),
+                 guid: (added.guids || [])[i] || undefined };
       });
       Q.hunt.title = "Cortes encontrados";
       endQueue("hunt");
@@ -1095,7 +1314,7 @@
     Q.render.overall = items.reduce(function (s, i) { return s + (i.state === "running" ? i.progress : i.state === "queued" ? 0 : 1); }, 0) / Math.max(1, items.length);
     if (renderRun) Q.render.eta = etaText(renderRun.t0, Q.render.overall);
     if (renderRun && items.every(function (i) { return i.state === "ok" || i.state === "fail" || i.state === "cancel"; })) finishRender(false);
-    else if (tab === "render") renderQueue();
+    else qRender("render");
   }
   try { cep.addEventListener("com.lchedick.cutcake.encoder", onEncoder); } catch (e) { addLog("eventos do Media Encoder: " + e.message + "\n"); }
 
@@ -1146,7 +1365,7 @@
     var steps = [{ name: "Bibliotecas da transcrição", state: "queued", progress: 0 }];
     if (gpu) steps.push({ name: "Componentes da placa de vídeo (NVIDIA)", state: "queued", progress: 0 });
     steps.push({ name: "Modelo do Whisper", state: "queued", progress: 0 });
-    startQueue(tab, "Instalando a transcrição", steps, "");
+    startQueue(tab, "Instalando a transcrição", steps, "");   // na tela inicial, a fila aparece enquanto tiver algo
     Q[tab].sub = "Pode levar alguns minutos na primeira vez.";
     var k = tab;
     var pip = function (file) { return runPy(["-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "-r", path.join(EXT, "engine", file)]); };
@@ -1201,10 +1420,10 @@
   });
 
   $("resetDefaults").addEventListener("click", function () {
-    Object.keys(DEF).forEach(function (k) { if (k !== "lists" && k !== "rPreset" && k !== "rFolder") save(k, DEF[k]); });
+    Object.keys(DEF).forEach(function (k) { if (k !== "lists" && k !== "rPreset" && k !== "rFolder" && k !== "tAfter" && k !== "tBefore") save(k, DEF[k]); });
     applyPrefs();
     $("supportResult").className = "result ok";
-    $("supportResult").textContent = "✓ Padrões restaurados (Python, preset, pasta e palavras foram mantidos).";
+    $("supportResult").textContent = "✓ Padrões restaurados (Python, preset, pasta, palavras e gatilhos foram mantidos).";
   });
   $("clearCache").addEventListener("click", function () {
     var dir = path.join(DATA, "transcripts"), n = 0;
@@ -1224,7 +1443,9 @@
         " · cuda " + c.cuda + " · gpu " + (c.gpu || "-") + " · modelos " + (c.models || []).join(",") : (c.error || "(não testado)")),
       "Ajustes: modelo=" + segVal("model") + " gpu=" + $("optGpu").checked + " cortes=" + $("hCount").value + " dur=" + $("hMin").value + "-" + $("hMax").value +
         " legenda=" + segVal("capStyle") + "/" + segVal("capMode") + "/" + $("cWords").value + " zoom=" + $("zAmount").value + "%/" + $("zRamp").value +
-        " foco=" + segVal("zFocus") + " cores=" + colorCut() + "/" + colorZoom() + " preset=" + $("rPreset").value,
+        " foco=" + segVal("zFocus") + " cores=" + colorCut() + "/" + colorZoom() + "/" + colorTake() + " preset=" + $("rPreset").value,
+      "Takes: pausa=" + $("tPause").value / 10 + " silêncio=" + $("tSil").value / 10 + " folga=" + $("tPad").value / 10 + " usa=" + segVal("tUse") +
+        " depois=" + linesOf("tAfter").join("/") + " antes=" + (linesOf("tBefore").join("/") || "-"),
       "", "Último Caçador:", Q.hunt.lastSummary || "(nenhum)",
       "", "Filas:", Object.keys(Q).map(function (k) { return k + ": " + Q[k].items.map(function (i) { return i.name + "=" + i.state + (i.msg ? " (" + i.msg + ")" : ""); }).join("; "); }).join("\n"),
       "", "Reinício (últimas linhas):", (function () {

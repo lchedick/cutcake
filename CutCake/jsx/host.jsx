@@ -4,6 +4,7 @@
 var CC_TICKS = 254016000000;
 var CC_TAG_HUNT = "[CutCake]";
 var CC_TAG_ZOOM = "[CutCake zoom]";
+var CC_TAG_TAKE = "[CutCake take]";
 
 function cc_str(v) {
     if (v === null || v === undefined) return "null";
@@ -153,7 +154,7 @@ function cc_addMarkers(d) {
     try {
         var seq = cc_findSequence(d.sequenceId);
         if (!seq) return cc_err("A sequência não existe mais.");
-        var n = 0;
+        var n = 0, guids = [];
         for (var i = 0; i < d.items.length; i++) {
             var it = d.items[i];
             var m = seq.markers.createMarker(it.start);
@@ -161,9 +162,10 @@ function cc_addMarkers(d) {
             m.comments = it.comment || "";
             if (it.end > it.start) cc_setEnd(m, it.end);
             if (d.color >= 0) cc_setColor(m, d.color);
+            guids.push(String(m.guid || ""));
             n++;
         }
-        return cc_str({ ok: true, count: n });
+        return cc_str({ ok: true, count: n, guids: guids });
     } catch (e) { return cc_err("Erro ao criar marcadores: " + e.toString()); }
 }
 
@@ -175,7 +177,7 @@ function cc_clearMarkers(d) {
         var all = cc_markerArray(seq), n = 0;
         for (var i = 0; i < all.length; i++) {
             var c = String(all[i].comments || "");
-            if (c.indexOf(d.tag || CC_TAG_HUNT) >= 0 && c.indexOf(CC_TAG_ZOOM) < 0) {
+            if (c.indexOf(d.tag || CC_TAG_HUNT) >= 0 && (c.indexOf(CC_TAG_ZOOM) < 0 || d.tag === CC_TAG_ZOOM)) {
                 try { seq.markers.deleteMarker(all[i]); n++; } catch (e1) {}
             }
         }
@@ -586,6 +588,150 @@ function cc_syncMove(d) {
         }
         return cc_str({ ok: !fails.length, moved: moved, fails: fails });
     } catch (e) { return cc_err("Erro ao mover os clipes: " + e.toString()); }
+}
+
+// ------------------------------------------------------------ takes: montagem
+// Copia o trecho de cada marcador de take (todas as trilhas, mesmo arquivo original) e cola um
+// em seguida do outro, na mesma sequencia, pelo menos 1 minuto depois do ultimo clipe.
+function cc_allClips(seq) {
+    var out = [], kinds = [["Video", seq.videoTracks], ["Audio", seq.audioTracks]];
+    for (var k = 0; k < kinds.length; k++) {
+        var trs = kinds[k][1];
+        for (var i = 0; i < trs.numTracks; i++)
+            for (var j = 0; j < trs[i].clips.numItems; j++) out.push({ type: kinds[k][0], track: i, clip: trs[i].clips[j] });
+    }
+    return out;
+}
+function cc_idSet(seq) {
+    var all = cc_allClips(seq), s = {};
+    for (var i = 0; i < all.length; i++) s[all[i].clip.nodeId] = true;
+    return s;
+}
+function cc_newClips(seq, before) {
+    var all = cc_allClips(seq), out = [];
+    for (var i = 0; i < all.length; i++) if (!before[all[i].clip.nodeId]) out.push(all[i]);
+    return out;
+}
+// recorte do arquivo (In/Out do item do projeto); o formato aceito mudou entre versoes
+function cc_itemIO(pi) {
+    try { return [cc_sec(pi.getInPoint(4)), cc_sec(pi.getOutPoint(4))]; } catch (e) {}
+    try { return [cc_sec(pi.getInPoint()), cc_sec(pi.getOutPoint())]; } catch (e2) {}
+    return null;
+}
+function cc_setItemIO(pi, a, b) {
+    var ok = function () { var io = cc_itemIO(pi); return !io || (Math.abs(io[0] - a) < 0.01 && Math.abs(io[1] - b) < 0.01); };
+    try { pi.setInPoint(a, 4); pi.setOutPoint(b, 4); } catch (e) {}
+    if (ok()) return true;
+    try { var ta = new Time(), tb = new Time(); ta.seconds = a; tb.seconds = b; pi.setInPoint(ta, 4); pi.setOutPoint(tb, 4); } catch (e2) {}
+    if (ok()) return true;
+    try { pi.setInPoint(cc_ticks(a), 4); pi.setOutPoint(cc_ticks(b), 4); } catch (e3) {}
+    return ok();
+}
+function cc_place(seq, w) {
+    var trs = w.type === "Audio" ? seq.audioTracks : seq.videoTracks, tr = trs[w.track];
+    var old = cc_itemIO(w.pi);
+    if (!cc_setItemIO(w.pi, w.srcIn, w.srcOut)) return "io";
+    try { tr.overwriteClip(w.pi, w.at); }
+    catch (e) { try { tr.overwriteClip(w.pi, cc_ticks(w.at)); } catch (e2) { if (old) cc_setItemIO(w.pi, old[0], old[1]); return "place"; } }
+    if (old) cc_setItemIO(w.pi, old[0], old[1]);
+    return "";
+}
+function cc_matches(n, w) {
+    return n.type === w.type && n.track === w.track && Math.abs(cc_sec(n.clip.start) - w.at) < 0.05;
+}
+// d = { sequenceId, color, onlyTag, gap }
+function cc_takesMontage(d) {
+    try {
+        var seq = cc_findSequence(d.sequenceId);
+        if (!seq) return cc_err("Abra uma sequência na timeline.");
+        var all = cc_markerArray(seq), marks = [], i, j, other = 0;
+        for (i = 0; i < all.length; i++) {
+            var m = all[i], ms = cc_sec(m.start), me = cc_sec(m.end);
+            if (cc_color(m) !== d.color || !(me - ms > 0.05)) continue;
+            if (d.onlyTag && String(m.comments || "").indexOf(CC_TAG_TAKE) < 0) { other++; continue; }
+            marks.push({ s: ms, e: me, name: String(m.name || "") });
+        }
+        marks.sort(function (a, b) { return a.s - b.s; });
+        if (!marks.length) return cc_str({ ok: false, reason: "nomarkers", other: other });
+        var clips = cc_allClips(seq), last = 0;
+        for (i = 0; i < clips.length; i++) last = Math.max(last, cc_sec(clips[i].clip.end));
+        var pos0 = Math.ceil(last + (d.gap || 60)), pos = pos0, wanted = [], skipped = [], takes = [];
+        for (i = 0; i < marks.length; i++) {
+            var mk = marks[i], n0 = wanted.length;
+            for (j = 0; j < clips.length; j++) {
+                var c = clips[j].clip, cs = cc_sec(c.start), ce = cc_sec(c.end);
+                var a = Math.max(mk.s, cs), b = Math.min(mk.e, ce);
+                if (b - a < 0.04) continue;
+                if (!cc_mediaPath(c)) { if (c.name) skipped.push(c.name); continue; }
+                var sp = cc_speed(c), src = cc_sec(c.inPoint) + (a - cs) * sp;
+                wanted.push({ type: clips[j].type, track: clips[j].track, pi: c.projectItem, srcIn: src, srcOut: src + (b - a) * sp,
+                              at: pos + (a - mk.s), len: (b - a) * sp, name: c.name, take: i });
+            }
+            takes.push({ name: mk.name, start: cc_round(mk.s), end: cc_round(mk.e), at: cc_round(pos), clips: wanted.length - n0 });
+            pos += mk.e - mk.s;
+        }
+        if (!wanted.length) return cc_err("Não achei clipes embaixo dos marcadores de take.");
+        // video primeiro, depois audio: o audio ligado que o Premiere coloca junto com o video
+        // e sobrescrito pelo audio certo; o que sobrar fora do lugar e apagado
+        var order = [];
+        for (i = 0; i < wanted.length; i++) if (wanted[i].type === "Video") order.push(wanted[i]);
+        for (i = 0; i < wanted.length; i++) if (wanted[i].type === "Audio") order.push(wanted[i]);
+        var before = cc_idSet(seq), fails = [], probe = true;
+        for (i = 0; i < order.length; i++) {
+            var w = order[i], ids = probe ? cc_idSet(seq) : null;
+            var r = cc_place(seq, w);
+            if (r) { fails.push(w.name + (r === "io" ? " (não deu para recortar o trecho)" : "")); continue; }
+            if (probe) {
+                // primeira colagem: confere se foi para o lugar certo antes de seguir
+                var nw = cc_newClips(seq, ids), hit = false;
+                for (j = 0; j < nw.length; j++) if (cc_matches(nw[j], w)) hit = true;
+                if (!hit) {
+                    for (j = 0; j < nw.length; j++) { try { nw[j].clip.remove(false, false); } catch (eR) {} }
+                    return cc_err("O Premiere não colou o trecho no lugar certo. Nada foi montado (se algo mudou, use Ctrl+Z).");
+                }
+                probe = false;
+            }
+        }
+        // confere cada colagem; o que ficou fora do lugar sai; o que faltou tenta de novo uma vez
+        for (var round = 0; round < 2; round++) {
+            var news = cc_newClips(seq, before), missing = [];
+            for (i = 0; i < order.length; i++) order[i].done = false;
+            for (j = 0; j < news.length; j++) {
+                var hitW = null;
+                for (i = 0; i < order.length; i++) if (cc_matches(news[j], order[i])) { hitW = order[i]; break; }
+                if (hitW) hitW.done = true;
+                else { try { news[j].clip.remove(false, false); } catch (eR2) {} }
+            }
+            for (i = 0; i < order.length; i++) if (!order[i].done) missing.push(order[i]);
+            if (!missing.length || round === 1) break;
+            for (i = 0; i < missing.length; i++) cc_place(seq, missing[i]);
+        }
+        var placed = 0;
+        for (i = 0; i < order.length; i++) {
+            if (order[i].done) { placed++; takes[order[i].take].ok = (takes[order[i].take].ok || 0) + 1; }
+            else fails.push(order[i].name);
+        }
+        try { seq.setPlayerPosition(cc_ticks(pos0)); } catch (eP) {}
+        return cc_str({ ok: !fails.length, start: pos0, end: cc_round(pos), takes: takes, placed: placed, total: order.length,
+                        fails: fails, skipped: skipped, sequenceId: seq.sequenceID });
+    } catch (e) { return cc_err("Erro ao montar os takes: " + e.toString()); }
+}
+
+// ------------------------------------------------------------ fila: o que ainda existe
+// d = { sequenceId, nodeIds:[], guids:[] }
+function cc_exists(d) {
+    try {
+        var seq = cc_findSequence(d.sequenceId);
+        if (!seq) return cc_str({ seq: false });
+        var ids = cc_idSet(seq), nodes = {}, marks = {}, i;
+        for (i = 0; i < (d.nodeIds || []).length; i++) if (ids[d.nodeIds[i]]) nodes[d.nodeIds[i]] = true;
+        if (d.guids && d.guids.length) {
+            var all = cc_markerArray(seq), have = {};
+            for (i = 0; i < all.length; i++) have[String(all[i].guid || "")] = true;
+            for (i = 0; i < d.guids.length; i++) if (have[d.guids[i]]) marks[d.guids[i]] = true;
+        }
+        return cc_str({ seq: true, nodeIds: nodes, guids: marks });
+    } catch (e) { return cc_err(e.toString()); }
 }
 
 // ------------------------------------------------------------ utilidades

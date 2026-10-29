@@ -222,17 +222,49 @@
   pre { white-space:pre-wrap; word-break:break-all; font-size:10px; color:var(--muted); max-height:140px; overflow:auto; margin:6px 0 0;
         background:var(--panel2); border-radius:3px; padding:6px; }
 
-  /* abas */
-  .tabs { display:flex; gap:2px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:3px; margin-bottom:10px; }
-  .tabs button { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:1px; border:0; background:none;
-                 color:var(--muted); padding:5px 2px 4px; border-radius:6px; cursor:pointer; font-size:11.5px; font-weight:600;
-                 transition:background-color .15s, color .15s; }
-  .tabs button:hover { color:var(--text); background:#2c2c2c; }
-  .tabs button.on { background:#3a3a3a; color:#fff; box-shadow:inset 0 -2px 0 var(--accent); }
-  .tabs button.on .ico { color:var(--accent-h); }
-  .tabs button span { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tabs.compact button span { display:none; }
+  /* cabecalho: "<" + logo + nome = botao de voltar para a tela inicial */
+  .homebtn { flex:1; min-width:0; display:flex; align-items:center; gap:0; background:none; border:0; padding:2px 6px 2px 0;
+             margin-left:-2px; border-radius:6px; color:inherit; font:inherit; text-align:left; cursor:pointer;
+             transition:background-color .15s; }
+  .homebtn .back { width:0; height:30px; overflow:hidden; color:var(--muted); transition:width .18s ease, margin .18s ease; margin-right:0; }
+  .homebtn:not(.at-home) .back { width:16px; margin-right:2px; }
+  .homebtn:not(.at-home):hover { background:#2e2e2e; }
+  .homebtn:not(.at-home):hover .back { color:#fff; }
+  .homebtn.at-home { cursor:default; }
+
+  /* tela inicial */
+  .home { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; animation:fadeUp .2s ease-out; }
+  .home.one { grid-template-columns:1fr; }
+  .hbtn { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; min-width:0;
+          min-height:100px; padding:10px 6px 14px; border:1px solid var(--line); border-radius:10px; background:var(--panel);
+          color:var(--text); cursor:pointer; font:inherit; transition:transform .2s ease, background-color .15s ease, border-color .15s ease; }
+  .hbtn:hover { transform:scale(1.03); background:#303030; border-color:#4a4a4a; z-index:2; }
+  .hbtn:active { transform:scale(1.01); }
+  .hbtn .ico { color:#bababa; margin-bottom:2px; }
+  .hbtn:hover .ico { color:var(--accent-h); }
+  .hname { font-size:13px; font-weight:700; color:#fff; }
+  .hsub { font-size:11px; color:var(--muted); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hstat { font-size:10.5px; font-weight:600; min-height:0; }
+  .hstat:empty { display:none; }
+  .hstat.run { color:var(--accent-h); } .hstat.ok { color:var(--ok); } .hstat.err { color:var(--err); }
+  .hbar { position:absolute; left:12px; right:12px; bottom:7px; height:3px; background:var(--panel2); border-radius:2px; overflow:hidden; display:none; }
+  .hbar > div { height:100%; width:0; background:var(--accent); transition:width .25s; }
+  .hbtn.running { border-color:#2d5d8f; }
+  .hbtn.running .hbar { display:block; }
+  .hbtn.running .ico { color:var(--accent-h); animation:pulse 1.2s ease-in-out infinite; }
+  .home.one { gap:8px; }
+  .home.one .hbtn { display:grid; grid-template-columns:auto 1fr; column-gap:12px; justify-items:start; align-content:center;
+                    min-height:0; padding:8px 12px 10px; text-align:left; }
+  .home.one .hbtn .ico { grid-row:1 / 4; width:40px; height:40px; margin:0; align-self:center; }
+  .home.one .hbtn:hover { transform:scale(1.02); }
   .tab { animation:fadeUp .2s ease-out; }
+
+  /* fila: limpar */
+  .qclear { margin-left:auto; display:flex; align-items:center; gap:3px; background:none; border:0; color:var(--muted); cursor:pointer;
+            font:inherit; font-size:11px; padding:2px 6px 2px 2px; border-radius:4px; }
+  .qclear:hover { background:#333; color:#fff; }
+  .qclear:hover .ico { color:#fff; }
+  .qclear .ico.sm { width:22px; height:22px; }
 
   .mini { color:var(--muted); font-size:11px; min-width:36px; }
   input[type=range] { min-width:0; }
@@ -281,8 +313,10 @@
 <body>
 <main>
   <header>
-    <i class="logo" data-i="Logo"></i>
-    <h1 title="CutCake • Cortes, legendas e zoom"><span class="t1">CUTCAKE</span><span class="t2">Cortes, legendas e zoom</span></h1>
+    <button class="homebtn at-home" id="homeBtn" title="CutCake • Cortes, legendas e zoom">
+      <i class="ico back" data-i="Back"></i><i class="logo" data-i="Logo"></i>
+      <h1><span class="t1">CUTCAKE</span><span class="t2">Cortes, legendas e zoom</span></h1>
+    </button>
     <button class="iconbtn" id="hdrUpdate" title="Verificar atualizações"><i class="ico" data-i="Update"></i><span class="dot"></span></button>
     <button class="iconbtn" id="openConfig" title="Configurações"><i class="ico" data-i="Config"></i></button>
   </header>
@@ -297,12 +331,14 @@
   <button class="btn green full" id="restart"><i class="ico sm" data-i="Update"></i>Reiniciar o Premiere agora</button>
   <div class="restart-hint">O Premiere vai fechar (pedindo para salvar, se precisar) e abrir de novo com o mesmo projeto.</div>
 
-  <nav class="tabs" id="tabs">
-    <button data-tab="sync"><i class="ico sm" data-i="Sync"></i><span>Sincronizar</span></button>
-    <button data-tab="hunt"><i class="ico sm" data-i="Hunt"></i><span>Caçar</span></button>
-    <button data-tab="captions"><i class="ico sm" data-i="Captions"></i><span>Legendar</span></button>
-    <button data-tab="zoom"><i class="ico sm" data-i="Zoom"></i><span>Zoom</span></button>
-    <button data-tab="render"><i class="ico sm" data-i="Render"></i><span>Render</span></button>
+  <!-- ===================================================== TELA INICIAL (na ordem do fluxo) -->
+  <nav class="home" id="home">
+    <button class="hbtn" data-tab="sync"><i class="ico" data-i="Sync"></i><span class="hname">Sincronizar</span><span class="hsub">Câmeras e áudio</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
+    <button class="hbtn" data-tab="takes"><i class="ico" data-i="Takes"></i><span class="hname">Takes</span><span class="hsub">O take bom dos avisos</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
+    <button class="hbtn" data-tab="hunt"><i class="ico" data-i="Hunt"></i><span class="hname">Caçar</span><span class="hsub">Melhores trechos</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
+    <button class="hbtn" data-tab="captions"><i class="ico" data-i="Captions"></i><span class="hname">Legendar</span><span class="hsub">Legendas animadas</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
+    <button class="hbtn" data-tab="zoom"><i class="ico" data-i="Zoom"></i><span class="hname">Zoom</span><span class="hsub">Zoom de ênfase</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
+    <button class="hbtn" data-tab="render"><i class="ico" data-i="Render"></i><span class="hname">Render</span><span class="hsub">Exportar os cortes</span><span class="hstat"></span><div class="hbar"><div></div></div></button>
   </nav>
 
   <!-- ===================================================== SINCRONIZAR -->
@@ -343,6 +379,40 @@
       </details>
     </div>
     <div class="hint pad">Selecione na timeline a referência e os clipes que vão andar (vídeo e áudio de cada câmera). Cada clipe precisa de espaço livre na trilha para onde vai.</div>
+  </section>
+
+  <!-- ===================================================== TAKES -->
+  <section class="tab" id="tab-takes" hidden>
+    <div class="actions">
+      <button class="btn" id="takesBtn" title="Acha os takes bons no clipe selecionado e marca na timeline">
+        <i class="ico" data-i="Takes"></i>Marcar takes</button>
+      <button class="btn secondary" id="takesMontage" title="Cola os takes marcados um em seguida do outro, 1 minuto depois do último clipe">
+        <i class="ico" data-i="Montage"></i>Montagem</button>
+    </div>
+    <div class="card">
+      <details class="more" id="moreTakes" style="margin-top:0;border-top:0;padding-top:0">
+        <summary><span class="chev">▸</span>Mais opções<span class="sum" id="sumTakes"></span></summary>
+        <div class="field">
+          <div class="lbl"><i class="ico" data-i="Pause"></i>Pausa entre um take e outro</div>
+          <div class="row"><input id="tPause" type="range" min="5" max="60" step="5"><span class="val" id="tPauseV"></span></div>
+          <div class="hint">Pausas menores que isso ficam dentro do take. Se o take vier cortado pela metade, aumente.</div>
+        </div>
+        <div class="field">
+          <div class="lbl"><i class="ico" data-i="Duration"></i>Folga no começo e no fim</div>
+          <div class="row"><input id="tPad" type="range" min="0" max="10"><span class="val" id="tPadV"></span></div>
+        </div>
+        <label class="check"><input id="tReplace" type="checkbox"><span>Apagar os takes marcados antes</span></label>
+      </details>
+      <div class="field" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <div class="lbl"><i class="ico" data-i="Marker"></i>A montagem usa</div>
+        <div class="seg text" id="tUse">
+          <button data-v="own">Os takes do CutCake</button>
+          <button data-v="all">Todos da cor do take</button>
+        </div>
+        <div class="hint" id="tUseHint"></div>
+      </div>
+    </div>
+    <div class="hint pad">Selecione na timeline o clipe com os avisos. O gatilho (ex.: “esse foi”) fica em Configurações → Takes. A montagem copia o trecho de todas as trilhas e não mexe no original.</div>
   </section>
 
   <!-- ===================================================== CAÇAR -->
@@ -496,6 +566,7 @@
       <i class="ico" data-i="Queue"></i><span id="qtitle">Fila</span>
       <span class="count" id="qcount"></span>
       <span class="eta" id="eta" hidden><i class="ico" data-i="Time"></i><span id="etaText"></span></span>
+      <button class="qclear" id="qclear" title="Tira da tela as tarefas que já terminaram (não mexe na timeline)" hidden><i class="ico sm" data-i="ClearQueue"></i>Limpar fila</button>
     </div>
     <div class="bar overall"><div id="overall"></div></div>
     <div class="qstatus" id="qstatus"></div>
@@ -506,7 +577,7 @@
     </div>
   </div>
 </main>
-<footer id="footer">CutCake | v1.0.2 | Desenvolvido por Lucas Chedick</footer>
+<footer id="footer">CutCake | v1.0.3 | Desenvolvido por Lucas Chedick</footer>
 
 <div class="modal" id="config">
   <div class="sheet" role="dialog" aria-label="Configurações">
@@ -536,6 +607,8 @@
         <div class="swatches" id="colorCut"></div>
         <div class="lbl" style="margin-top:8px"><i class="ico sm" data-i="Marker"></i>Cor do zoom</div>
         <div class="swatches" id="colorZoom"></div>
+        <div class="lbl" style="margin-top:8px"><i class="ico sm" data-i="Marker"></i>Cor dos takes</div>
+        <div class="swatches" id="colorTake"></div>
         <div class="result" id="colorResult"></div>
       </div>
 
@@ -547,6 +620,20 @@
         <div class="lbl">Começos fracos (tiram ponto se o corte começar assim)</div><textarea id="lConectivos" rows="2"></textarea>
         <div class="lbl">Assuntos para evitar (tiram ponto)</div><textarea id="lEvitar" rows="2"></textarea>
         <button class="btn secondary small" id="resetLists" style="margin-top:6px">Voltar às palavras padrão</button>
+      </details>
+
+      <details class="sec fold" id="foldTakes">
+        <summary><h3><span class="chev">▸</span>Takes</h3></summary>
+        <div class="hint" style="margin-bottom:6px">Uma expressão por linha. Sem acento e maiúsculas também funcionam.</div>
+        <div class="lbl"><i class="ico sm" data-i="Trigger"></i>Gatilho depois do take (confirma o take bom)</div>
+        <textarea id="tAfter" rows="4"></textarea>
+        <div class="lbl"><i class="ico sm" data-i="Trigger"></i>Gatilho antes do take</div>
+        <textarea id="tBefore" rows="2" placeholder="ex.: ação"></textarea>
+        <div class="hint" style="margin:-2px 0 8px">Vazio = desligado. Com ele, o take é a fala logo depois do gatilho.</div>
+        <div class="lbl">Silêncio em volta do gatilho</div>
+        <div class="row"><input id="tSil" type="range" min="5" max="30" step="5"><span class="val" id="tSilV"></span></div>
+        <div class="hint">O gatilho só vale com esse silêncio antes e depois. Assim, um “esse foi” no meio do aviso não conta.</div>
+        <button class="btn secondary small" id="resetTrig" style="margin-top:8px">Voltar aos gatilhos padrão</button>
       </details>
 
       <div class="sec">
@@ -578,8 +665,9 @@
           <button data-v="1">Média</button>
           <button data-v="1.15">Grande</button>
         </div>
-        <div class="lbl" style="margin-top:8px">Abas</div>
+        <div class="lbl" style="margin-top:8px">Funções na tela inicial</div>
         <label class="switch"><span>Sincronizar</span><input type="checkbox" data-tabvis="sync"></label>
+        <label class="switch"><span>Takes</span><input type="checkbox" data-tabvis="takes"></label>
         <label class="switch"><span>Caçar</span><input type="checkbox" data-tabvis="hunt"></label>
         <label class="switch"><span>Legendar</span><input type="checkbox" data-tabvis="captions"></label>
         <label class="switch"><span>Zoom</span><input type="checkbox" data-tabvis="zoom"></label>

@@ -750,7 +750,7 @@ def cmd_run(task_path, out_path):
     with open(task_path, "r", encoding="utf-8") as fh:
         task = json.load(fh)
     action = task.get("action")
-    if action not in ("hunt", "captions", "transcribe", "sync"):
+    if action not in ("hunt", "captions", "transcribe", "sync", "takes"):
         fail("ação desconhecida: %s" % action)
     t0 = time.time()
     last = [0.0]
@@ -776,6 +776,13 @@ def cmd_run(task_path, out_path):
     if action == "hunt":
         log("STATUS Procurando os melhores trechos...")
         res.update(analyse(trans, task.get("hunt")))
+    elif action == "takes":
+        import takes as takesmod
+        log("STATUS Procurando os takes...")
+        try:
+            res.update(takesmod.analyse(trans, task.get("jobs") or [], task.get("takes")))
+        except RuntimeError as e:
+            fail(str(e))
     elif action == "captions":
         srt, n, nl = build_captions(trans, task.get("captions"), task.get("range"))
         srt_path = task.get("srt") or os.path.splitext(out_path)[0] + ".srt"

@@ -1,9 +1,9 @@
 ﻿CUTCAKE • CORTES, LEGENDAS E ZOOM
 =================================
 
-Painel para Adobe Premiere Pro que acha os melhores trechos da pregação,
-cria legendas animadas, dá zoom de ênfase e manda os cortes para o
-Media Encoder.
+Painel para Adobe Premiere Pro que sincroniza câmeras e áudio, acha o
+take bom dos avisos e os melhores trechos da pregação, cria legendas
+animadas, dá zoom de ênfase e manda os cortes para o Media Encoder.
 
 
 INSTALAÇÃO - WINDOWS
@@ -14,7 +14,7 @@ INSTALAÇÃO - WINDOWS
    "Mais informações" > "Executar assim mesmo".)
 3. O instalador pergunta o que instalar. Responda:
    "1" = Completo: Python + transcrição (Whisper), para Sincronizar,
-         Caçar e Legendar. Com placa de vídeo NVIDIA, cerca de 3 GB.
+         Takes, Caçar e Legendar. Com placa de vídeo NVIDIA, cerca de 3 GB.
    "2" = Leve: só o Python e o básico do Sincronizar (cerca de 60 MB).
    "3" = Agora não (Zoom, Render e Animar funcionam sem o Python).
    Se não tiver um Python compatível (3.10 a 3.13), ele instala o 3.12
@@ -34,8 +34,16 @@ INSTALAÇÃO - MAC (BETA)
 
 =================================
 
-AS 5 ABAS
----------
+TELA INICIAL
+------------
+O painel abre com 6 botões, na ordem do trabalho: Sincronizar, Takes,
+Caçar, Legendar, Zoom e Render. Dentro de uma função, clique no logo
+(com a setinha "<") para voltar ao início. Os botões mostram o progresso
+de quem está rodando e o resultado da última vez.
+
+Na fila, "Limpar fila" tira da tela o que já terminou. Se você apagar da
+sequência um clipe ou marcador que está na fila, ele sai da lista sozinho.
+
 SINCRONIZAR
   Coloque as câmeras e o áudio da mesa na timeline (em qualquer lugar),
   selecione todos e clique em "Sincronizar". A referência (normalmente o
@@ -45,6 +53,19 @@ SINCRONIZAR
   "escorrega" ao longo da pregação (drift). Se o selo ficar baixo, o clipe
   não é movido. "Desfazer" volta tudo para onde estava.
   Cada clipe precisa de espaço livre na trilha para onde vai.
+
+TAKES (avisos gravados várias vezes)
+  Quem grava erra, faz uma pausa e grava de novo. Quando acerta, fala um
+  gatilho, como "esse foi" ou "ficou bom".
+  Marcar takes:  selecione o clipe dos avisos e clique. O take bom (o
+                 último trecho de fala antes do gatilho) vira um marcador
+                 azul com duração. Ajuste as pontas, se quiser.
+                 O gatilho só vale com 1 s de silêncio antes e depois.
+  Montagem:      cola os takes marcados um em seguida do outro, na mesma
+                 sequência, 1 minuto depois do último clipe, com todas as
+                 trilhas. O original não muda.
+  Mais opções:   pausa entre um take e outro (padrão 2 s) e folga.
+  Os gatilhos ficam em Configurações > Takes.
 
 CAÇAR
   Caçar trechos:      transcreve o áudio e marca os melhores trechos como
@@ -80,10 +101,12 @@ CONFIGURAÇÕES (engrenagem no topo)
 ----------------------------------
 Transcrição:   modelo (Automático, Rápido ou Preciso), placa de vídeo e
                botão "Instalar transcrição".
-Marcadores:    cor dos marcadores de corte e de zoom.
+Marcadores:    cor dos marcadores de corte, de zoom e de take.
 Caçador:       as palavras que dão ou tiram ponto dos trechos.
+Takes:         gatilhos depois do take ("esse foi"...) e antes do take
+               (ex.: "ação", vazio = desligado) e o silêncio em volta.
 Avisos:        sons, volume, notificação e atualização automática.
-Interface:     tamanho e quais abas aparecem.
+Interface:     tamanho e quais funções aparecem na tela inicial.
 Suporte:       copiar diagnóstico, restaurar padrões, reiniciar o Premiere,
                limpar transcrições e ver o log.
 
